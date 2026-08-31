@@ -2,42 +2,99 @@
 //  ShiftUITests.swift
 //  ShiftUITests
 //
-//  Created by desalix on 30/08/2026.
-//
 
 import XCTest
 
 final class ShiftUITests: XCTestCase {
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
     }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-    }
-
+    /// Walks every tab, asserting the shell renders and capturing a screenshot
+    /// of each so layout regressions are visible in the test report.
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testEachTabRenders() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+        // The seeded simulator has already been through onboarding; if this run
+        // starts fresh, get past it first.
+        let getStarted = app.buttons["Get Started"]
+        if getStarted.waitForExistence(timeout: 5) {
+            getStarted.tap()
+        }
+
+        for name in ["Home", "Assistant", "Income", "Settings"] {
+            let tab = app.buttons[name]
+            XCTAssertTrue(tab.waitForExistence(timeout: 10), "\(name) tab is missing")
+            tab.tap()
+
+            // The top bar always shows the current tab's title.
+            XCTAssertTrue(
+                app.staticTexts[name].waitForExistence(timeout: 5),
+                "\(name) title did not appear in the top bar"
+            )
+
+            attachScreenshot(named: name)
+        }
     }
 
+    /// The month stepper only exists on the month-scoped tabs, and must move the
+    /// displayed month rather than the whole app.
     @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
-        }
+    func testMonthStepperOnlyAppearsOnMonthScopedTabs() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let getStarted = app.buttons["Get Started"]
+        if getStarted.waitForExistence(timeout: 5) { getStarted.tap() }
+
+        let next = app.buttons["Next month"]
+        let previous = app.buttons["Previous month"]
+
+        XCTAssertTrue(next.waitForExistence(timeout: 10), "Home should have a month stepper")
+
+        next.tap()
+        previous.tap()
+
+        app.buttons["Assistant"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Assistant"].waitForExistence(timeout: 5),
+            "Assistant did not appear"
+        )
+        XCTAssertFalse(next.exists, "Assistant must not show a month stepper")
+
+        app.buttons["Income"].tap()
+        XCTAssertTrue(next.waitForExistence(timeout: 5), "Income should have a month stepper")
+    }
+
+    /// The add button is Home-only, and opens the entry editor.
+    @MainActor
+    func testAddButtonOpensTheEditor() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let getStarted = app.buttons["Get Started"]
+        if getStarted.waitForExistence(timeout: 5) { getStarted.tap() }
+
+        let add = app.buttons["New entry"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10), "Home should have an add button")
+        add.tap()
+
+        XCTAssertTrue(
+            app.navigationBars["New Entry"].waitForExistence(timeout: 5),
+            "The entry editor did not open"
+        )
+        attachScreenshot(named: "Editor")
+
+        app.buttons["Cancel"].tap()
+    }
+
+    private func attachScreenshot(named name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 }
