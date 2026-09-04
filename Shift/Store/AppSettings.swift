@@ -80,13 +80,14 @@ enum AssistantModel: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// App-wide preferences.
+/// App-wide preferences, stored in `UserDefaults`.
 ///
-/// Values live in `UserDefaults` for fast local reads and are mirrored into
-/// `NSUbiquitousKeyValueStore` so they follow the user between devices. That
-/// store is the right tool here: it is a handful of small scalars, not
-/// relational data, and last-write-wins is the correct resolution for a
-/// single-user personal app.
+/// These used to mirror into `NSUbiquitousKeyValueStore` so they followed the
+/// user between devices, but that needs the iCloud capability, which a free
+/// personal Apple developer team cannot sign. Settings are now per-device. To
+/// restore syncing on a paid account, mirror each `write` into the ubiquitous
+/// store and observe `didChangeExternallyNotification` — guarding the callback
+/// so adopted values are not echoed straight back.
 @Observable
 @MainActor
 final class AppSettings {
@@ -100,22 +101,9 @@ final class AppSettings {
         static let appearance = "settings.appearance"
         static let assistantModel = "settings.assistantModel"
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
-
-        static let all = [
-            accentColor, workColor, schoolColor, calendarColor, schoolEnabled,
-            language, appearance, assistantModel, hasCompletedOnboarding,
-        ]
     }
 
     private let defaults: UserDefaults
-    private let cloud: NSUbiquitousKeyValueStore?
-    /// `deinit` is nonisolated, so the token it needs cannot be main-actor
-    /// isolated. `@ObservationIgnored` keeps it a plain stored property — the
-    /// macro would otherwise turn it into a computed one, which cannot be
-    /// `nonisolated`. It is written once in `init` and read once in `deinit`,
-    /// never concurrently.
-    @ObservationIgnored
-    private nonisolated(unsafe) var observer: NSObjectProtocol?
 
     var accentColor: AppColor { didSet { write(accentColor.rawValue, Key.accentColor) } }
     var workColor: AppColor { didSet { write(workColor.rawValue, Key.workColor) } }
@@ -127,9 +115,8 @@ final class AppSettings {
     var assistantModel: AssistantModel { didSet { write(assistantModel.rawValue, Key.assistantModel) } }
     var hasCompletedOnboarding: Bool { didSet { write(hasCompletedOnboarding, Key.hasCompletedOnboarding) } }
 
-    init(defaults: UserDefaults = .standard, cloud: NSUbiquitousKeyValueStore? = .default) {
+    init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.cloud = cloud
 
         accentColor = AppColor.named(defaults.string(forKey: Key.accentColor) ?? AppColor.blue.rawValue)
         workColor = AppColor.named(defaults.string(forKey: Key.workColor) ?? AppColor.blue.rawValue)
@@ -140,14 +127,6 @@ final class AppSettings {
         appearance = AppearanceMode(rawValue: defaults.string(forKey: Key.appearance) ?? "") ?? .system
         assistantModel = AssistantModel(rawValue: defaults.string(forKey: Key.assistantModel) ?? "") ?? .opus
         hasCompletedOnboarding = defaults.bool(forKey: Key.hasCompletedOnboarding)
-
-        startObservingCloud()
-        cloud?.synchronize()
-        pullFromCloud()
-    }
-
-    deinit {
-        if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 
     /// The colour used for an event type, before any per-event override.
@@ -179,20 +158,8 @@ final class AppSettings {
 
     // MARK: - Persistence
 
-    /// True while `pullFromCloud` is assigning remote values.
-    ///
-    /// Those assignments run through the same `didSet` observers as a local
-    /// edit, so without this the device would echo every value it just received
-    /// straight back to the cloud store — and the other device would echo it
-    /// back again. The local write still happens; only the round trip is
-    /// suppressed.
-    @ObservationIgnored
-    private var isApplyingRemoteChange = false
-
     private func write(_ value: Any, _ key: String) {
         defaults.set(value, forKey: key)
-        guard !isApplyingRemoteChange else { return }
-        cloud?.set(value, forKey: key)
     }
 
     private func applyLanguage() {
@@ -205,51 +172,6 @@ final class AppSettings {
             defaults.set([code], forKey: "AppleLanguages")
         } else {
             defaults.removeObject(forKey: "AppleLanguages")
-        }
-    }
-
-    private func startObservingCloud() {
-        guard let cloud else { return }
-        observer = NotificationCenter.default.addObserver(
-            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
-            object: cloud,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.pullFromCloud() }
-        }
-    }
-
-    /// Adopts remote values, persisting them locally without echoing them back
-    /// to the cloud store.
-    private func pullFromCloud() {
-        guard let cloud else { return }
-        isApplyingRemoteChange = true
-        defer { isApplyingRemoteChange = false }
-
-        for key in Key.all {
-            guard let value = cloud.object(forKey: key) else { continue }
-            switch key {
-            case Key.accentColor:
-                if let raw = value as? String { accentColor = AppColor.named(raw) }
-            case Key.workColor:
-                if let raw = value as? String { workColor = AppColor.named(raw) }
-            case Key.schoolColor:
-                if let raw = value as? String { schoolColor = AppColor.named(raw) }
-            case Key.calendarColor:
-                if let raw = value as? String { calendarColor = AppColor.named(raw) }
-            case Key.schoolEnabled:
-                if let flag = value as? Bool { schoolEnabled = flag }
-            case Key.language:
-                if let raw = value as? String, let parsed = AppLanguage(rawValue: raw) { language = parsed }
-            case Key.appearance:
-                if let raw = value as? String, let parsed = AppearanceMode(rawValue: raw) { appearance = parsed }
-            case Key.assistantModel:
-                if let raw = value as? String, let parsed = AssistantModel(rawValue: raw) { assistantModel = parsed }
-            case Key.hasCompletedOnboarding:
-                if let flag = value as? Bool, flag { hasCompletedOnboarding = true }
-            default:
-                break
-            }
         }
     }
 }

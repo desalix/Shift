@@ -134,14 +134,6 @@ struct SettingsView: View {
                     } label: {
                         Label("Entries", systemImage: "calendar")
                     }
-
-                    LabeledContent {
-                        Label("iCloud", systemImage: "icloud")
-                            .labelStyle(.titleAndIcon)
-                            .foregroundStyle(.secondary)
-                    } label: {
-                        Label("Sync", systemImage: "arrow.triangle.2.circlepath")
-                    }
                 }
             }
             .navigationTitle(Text("Settings"))
