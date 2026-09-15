@@ -1,0 +1,26 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "+%lld more" : {
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "+%lld más" } }
+      }
+    },
+    "No to-dos" : {
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Sin tareas" } }
+      }
+    },
+    "To-Do" : {
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Pendientes" } }
+      }
+    },
+    "Your to-do list at a glance." : {
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Tu lista de tareas de un vistazo." } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

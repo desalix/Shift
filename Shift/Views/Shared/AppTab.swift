@@ -5,9 +5,9 @@
 
 import SwiftUI
 
-/// The four top-level destinations.
+/// The top-level destinations.
 enum AppTab: String, CaseIterable, Identifiable, Sendable {
-    case home, assistant, income, settings
+    case home, assistant, todo, income, settings
 
     var id: String { rawValue }
 
@@ -15,29 +15,20 @@ enum AppTab: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .home: String(localized: "Home")
         case .assistant: String(localized: "Assistant")
+        case .todo: String(localized: "To-Do")
         case .income: String(localized: "Income")
         case .settings: String(localized: "Settings")
         }
     }
 
-    /// Filled variants read better at tab-bar size and keep the set visually
-    /// consistent with the rest of the SF Symbols used in the app.
+    /// Outline symbols: the system tab bar applies the filled variant itself.
     var symbolName: String {
         switch self {
         case .home: "calendar"
-        case .assistant: "bubble.left.and.bubble.right.fill"
-        case .income: "eurosign.circle.fill"
-        case .settings: "gearshape.fill"
+        case .assistant: "bubble.left.and.bubble.right"
+        case .todo: "list.bullet"
+        case .income: "eurosign.circle"
+        case .settings: "gearshape"
         }
-    }
-
-    /// Only Home and Income are scoped to a month, so only they get the stepper.
-    var showsMonthStepper: Bool {
-        self == .home || self == .income
-    }
-
-    /// Only Home can create an entry from the top bar.
-    var showsAddButton: Bool {
-        self == .home
     }
 }

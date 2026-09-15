@@ -17,14 +17,13 @@ struct IncomeView: View {
     @Environment(\.calendar) private var calendar
 
     var body: some View {
-        // The stack exists purely so rows can push a detail view; the app draws
-        // its own top bar, so the navigation bar is hidden at the root and only
-        // appears once something is pushed onto it.
-        NavigationStack {
-            MonthIncome(month: displayedMonth)
-                .id(CalendarMath.startOfMonth(for: displayedMonth, calendar: calendar))
-                .toolbar(.hidden, for: .navigationBar)
-        }
+        MonthIncome(month: displayedMonth)
+            .id(CalendarMath.startOfMonth(for: displayedMonth, calendar: calendar))
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    MonthStepper(displayedMonth: $displayedMonth)
+                }
+            }
     }
 }
 

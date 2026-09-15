@@ -505,6 +505,7 @@ struct AssistantToolsTests {
 
 // MARK: - Offline assistant
 
+@MainActor
 struct MockAIProviderTests {
     private func context() -> AssistantContext {
         AssistantContext(
@@ -726,5 +727,133 @@ struct EventSeriesTests {
         try context.save()
 
         #expect(unrelated.title == "Otra cosa")
+    }
+}
+
+// MARK: - To-do list
+
+struct TodoStorageTests {
+    @Test func entriesAreNonBlankTrimmedLinesInOrder() {
+        let text = "Buy milk\n\n   Gym  \n\t\nCall mum\n"
+        #expect(TodoStorage.entries(from: text) == ["Buy milk", "Gym", "Call mum"])
+    }
+
+    @Test func emptyTextHasNoEntries() {
+        #expect(TodoStorage.entries(from: "").isEmpty)
+        #expect(TodoStorage.entries(from: "\n \n").isEmpty)
+    }
+}
+
+struct TodoWidgetLayoutTests {
+    private func items(_ count: Int) -> [String] { (1 ... max(1, count)).prefix(count).map { "Item \($0)" } }
+
+    /// Column-major: the left column is filled completely before the right.
+    @Test func fillsLeftColumnFirst() {
+        let layout = TodoWidgetLayout(entries: items(7), rowsPerColumn: 5)
+        #expect(layout.left == (1 ... 5).map { .entry("Item \($0)") })
+        #expect(layout.right == [.entry("Item 6"), .entry("Item 7")])
+    }
+
+    @Test func exactFitShowsEverythingWithoutOverflow() {
+        let layout = TodoWidgetLayout(entries: items(10), rowsPerColumn: 5)
+        #expect(layout.left.count == 5)
+        #expect(layout.right.count == 5)
+        #expect(layout.right.last == .entry("Item 10"))
+    }
+
+    /// The bottom-right cell reports what's hidden, and every entry is counted.
+    @Test func overflowTakesTheBottomRightCell() {
+        let layout = TodoWidgetLayout(entries: items(13), rowsPerColumn: 5)
+        #expect(layout.left.count == 5)
+        #expect(layout.right.count == 5)
+        #expect(layout.right.last == .overflow(4))
+        #expect(layout.right.dropLast().last == .entry("Item 9"))
+    }
+
+    @Test func emptyInputProducesEmptyColumns() {
+        let layout = TodoWidgetLayout(entries: [], rowsPerColumn: 5)
+        #expect(layout.left.isEmpty)
+        #expect(layout.right.isEmpty)
+    }
+}
+
+// MARK: - Month export
+
+@MainActor
+struct MonthExporterTests {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Madrid")!
+        return calendar
+    }
+
+    private func date(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 9, _ min: Int = 0) -> Date {
+        calendar.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: min))!
+    }
+
+    private func work(_ title: String, _ start: Date, hours: Int = 2, rate: Int = 1000) -> Event {
+        Event(title: title, type: .work, startDate: start,
+              endDate: start.addingTimeInterval(TimeInterval(hours * 3600)),
+              compensationType: .hourly, hourlyRateCents: rate)
+    }
+
+    @Test func groupsByStartMonthAndOrdersChronologically() {
+        let events = [
+            work("Late", date(2026, 8, 20)),
+            work("Early", date(2026, 8, 3)),
+            // Starts on 31 July, ends in August: belongs to July, like Income.
+            work("Overnight", date(2026, 7, 31, 22), hours: 5),
+            work("Elsewhere", date(2026, 9, 1)),
+        ]
+        let document = MonthExporter.makeDocument(
+            events: events, months: [date(2026, 8, 15), date(2026, 7, 1)], calendar: calendar
+        )
+        #expect(document.months.map(\.month) == ["2026-07", "2026-08"])
+        #expect(document.months[0].entries.map(\.title) == ["Overnight"])
+        #expect(document.months[1].entries.map(\.title) == ["Early", "Late"])
+    }
+
+    @Test func carriesEarningsAndDisplayTitles() {
+        let subject = Subject(name: "Calculus")
+        let exam = Event(title: "", type: .school, startDate: date(2026, 8, 10),
+                         endDate: date(2026, 8, 10, 11), schoolKind: .exam, subject: subject)
+        let shift = work("Shift", date(2026, 8, 11), hours: 3, rate: 1250)
+
+        let entries = MonthExporter.makeDocument(events: [exam, shift], months: [date(2026, 8, 1)], calendar: calendar)
+            .months[0].entries
+
+        #expect(entries[0].title == "Calculus Exam")
+        #expect(entries[0].subject == "Calculus")
+        #expect(entries[0].earningsCents == 0)
+        #expect(entries[1].earningsCents == 3750)
+        #expect(entries[1].durationMinutes == 180)
+    }
+
+    @Test func roundTripsThroughJSON() throws {
+        let document = MonthExporter.makeDocument(
+            events: [work("Shift", date(2026, 8, 3))],
+            months: [date(2026, 8, 1)],
+            calendar: calendar,
+            now: date(2026, 9, 1, 12)
+        )
+        let data = try MonthExporter.encode(document, timeZone: calendar.timeZone)
+        let json = try #require(String(data: data, encoding: .utf8))
+        // Times keep the local offset rather than being flattened to UTC.
+        #expect(json.contains("+02:00"))
+        #expect(try MonthExporter.decode(data) == document)
+    }
+
+    @Test func fileNamesDescribeTheRange() {
+        #expect(MonthExporter.fileName(for: [date(2026, 8, 9)], calendar: calendar) == "Shift-2026-08.json")
+        #expect(MonthExporter.fileName(for: [date(2026, 8, 1), date(2026, 6, 1), date(2026, 7, 1)], calendar: calendar)
+                == "Shift-2026-06_to_2026-08.json")
+        #expect(MonthExporter.fileName(for: [], calendar: calendar) == "Shift.json")
+    }
+
+    @Test func availableMonthsAreNewestFirstWithCounts() {
+        let events = [work("A", date(2026, 6, 2)), work("B", date(2026, 8, 2)), work("C", date(2026, 8, 5))]
+        let months = MonthExporter.availableMonths(for: events, calendar: calendar)
+        #expect(months.map { MonthExporter.monthKey(for: $0.start, calendar: calendar) } == ["2026-08", "2026-06"])
+        #expect(months.map(\.entryCount) == [2, 1])
     }
 }

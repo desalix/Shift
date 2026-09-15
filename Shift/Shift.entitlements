@@ -2,16 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleURLTypes</key>
+	<key>com.apple.security.application-groups</key>
 	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>desalas.Shift</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>shift</string>
-			</array>
-		</dict>
+		<string>group.desalas.Shift</string>
 	</array>
 </dict>
 </plist>

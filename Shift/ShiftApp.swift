@@ -10,6 +10,7 @@ import SwiftData
 struct ShiftApp: App {
     @State private var settings = AppSettings()
     @State private var errorReporter = AppErrorReporter()
+    @State private var todoStore = TodoListStore()
     private let container: ModelContainer
 
     init() {
@@ -21,6 +22,7 @@ struct ShiftApp: App {
             RootView()
                 .environment(settings)
                 .environment(errorReporter)
+                .environment(todoStore)
                 .preferredColorScheme(settings.appearance.colorScheme)
                 .tint(settings.accentColor.color)
                 .environment(\.locale, settings.language.locale ?? Locale.autoupdatingCurrent)

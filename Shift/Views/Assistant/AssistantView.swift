@@ -19,12 +19,11 @@ struct AssistantView: View {
     @State private var importError: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            transcript
-            Divider()
-            composer
-        }
-        .background(Color(.systemGroupedBackground))
+        transcript
+            // A safe-area inset rather than a VStack sibling, so the composer
+            // sits above the system tab bar and the transcript scrolls under it.
+            .safeAreaInset(edge: .bottom, spacing: 0) { composer }
+            .background(Color(.systemGroupedBackground))
         .fileImporter(
             isPresented: $isImportingFile,
             allowedContentTypes: Self.allowedTypes,

@@ -13,11 +13,38 @@ struct HomeView: View {
 
     @Environment(\.calendar) private var calendar
 
+    @State private var isPresentingEditor = false
+
     var body: some View {
         // Re-creating the grid when the month changes is what re-runs the
         // `@Query` underneath with new date bounds.
         MonthGrid(month: displayedMonth)
             .id(CalendarMath.startOfMonth(for: displayedMonth, calendar: calendar))
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    MonthStepper(displayedMonth: $displayedMonth)
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        isPresentingEditor = true
+                    } label: {
+                        Label("New entry", systemImage: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $isPresentingEditor) {
+                EventEditorView(mode: .create(initialDate: defaultNewEventDate))
+            }
+    }
+
+    /// Today when viewing the current month — almost always what the user
+    /// means — otherwise the first day of the month on screen.
+    private var defaultNewEventDate: Date {
+        let now = Date()
+        if calendar.isDate(displayedMonth, equalTo: now, toGranularity: .month) {
+            return now
+        }
+        return CalendarMath.startOfMonth(for: displayedMonth, calendar: calendar)
     }
 }
 

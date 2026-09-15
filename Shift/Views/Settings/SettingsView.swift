@@ -19,133 +19,135 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var settings = settings
 
-        NavigationStack {
-            List {
-                Section {
-                    Toggle(isOn: Binding(
-                        get: { settings.schoolEnabled },
-                        set: { newValue in
-                            // Turning School off hides the section but must never
-                            // silently discard the user's school data, so warn
-                            // only when there is something to lose.
-                            if !newValue, hasSchoolData {
-                                showingSchoolDisableWarning = true
-                            } else {
-                                settings.schoolEnabled = newValue
-                            }
-                        }
-                    )) {
-                        Label("School", systemImage: EventType.school.symbolName)
-                    }
-
-                    if settings.schoolEnabled {
-                        NavigationLink {
-                            SubjectsView()
-                        } label: {
-                            LabeledContent {
-                                Text("\(subjects.count)")
-                            } label: {
-                                Label("Subjects", systemImage: "books.vertical")
-                            }
+        List {
+            Section {
+                Toggle(isOn: Binding(
+                    get: { settings.schoolEnabled },
+                    set: { newValue in
+                        // Turning School off hides the section but must never
+                        // silently discard the user's school data, so warn
+                        // only when there is something to lose.
+                        if !newValue, hasSchoolData {
+                            showingSchoolDisableWarning = true
+                        } else {
+                            settings.schoolEnabled = newValue
                         }
                     }
-                } header: {
-                    Text("Sections")
-                } footer: {
-                    Text("Work and personal calendar entries are always available.")
+                )) {
+                    Label("School", systemImage: EventType.school.symbolName)
                 }
 
-                Section {
+                if settings.schoolEnabled {
                     NavigationLink {
-                        PresetsView()
+                        SubjectsView()
                     } label: {
                         LabeledContent {
-                            Text("\(presets.count)")
+                            Text("\(subjects.count)")
                         } label: {
-                            Label("Manage Presets", systemImage: "square.stack.3d.up")
+                            Label("Subjects", systemImage: "books.vertical")
                         }
                     }
-                } header: {
-                    Text("Presets")
-                } footer: {
-                    Text("Presets pre-fill the entry form. Handy for a shift you work often.")
                 }
+            } header: {
+                Text("Sections")
+            } footer: {
+                Text("Work and personal calendar entries are always available.")
+            }
 
-                Section("Appearance") {
-                    Picker(selection: $settings.appearance) {
-                        ForEach(AppearanceMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
-                    } label: {
-                        Label("Theme", systemImage: "circle.lefthalf.filled")
-                    }
-
-                    ColorPickerRow(
-                        title: String(localized: "Accent"),
-                        systemImage: "paintpalette",
-                        selection: $settings.accentColor
-                    )
-                    ColorPickerRow(
-                        title: String(localized: "Work"),
-                        systemImage: EventType.work.symbolName,
-                        selection: $settings.workColor
-                    )
-                    if settings.schoolEnabled {
-                        ColorPickerRow(
-                            title: String(localized: "School"),
-                            systemImage: EventType.school.symbolName,
-                            selection: $settings.schoolColor
-                        )
-                    }
-                    ColorPickerRow(
-                        title: String(localized: "Calendar"),
-                        systemImage: EventType.calendar.symbolName,
-                        selection: $settings.calendarColor
-                    )
-                }
-
-                Section {
-                    Picker(selection: $settings.language) {
-                        ForEach(AppLanguage.allCases) { language in
-                            Text(language.displayName).tag(language)
-                        }
-                    } label: {
-                        Label("Language", systemImage: "globe")
-                    }
-                } header: {
-                    Text("Language")
-                } footer: {
-                    Text("Most text changes immediately. A few system-provided strings update the next time you open Shift.")
-                }
-
-                Section {
-                    NavigationLink {
-                        AssistantSettingsView()
-                    } label: {
-                        Label("AI Assistant", systemImage: "sparkles")
-                    }
-                } footer: {
-                    Text("Connect your own Anthropic API key to enable the Assistant.")
-                }
-
-                Section("Data") {
+            Section {
+                NavigationLink {
+                    PresetsView()
+                } label: {
                     LabeledContent {
-                        Text("\(allEvents.count)")
+                        Text("\(presets.count)")
                     } label: {
-                        Label("Entries", systemImage: "calendar")
+                        Label("Manage Presets", systemImage: "square.stack.3d.up")
                     }
                 }
+            } header: {
+                Text("Presets")
+            } footer: {
+                Text("Presets pre-fill the entry form. Handy for a shift you work often.")
             }
-            .navigationTitle(Text("Settings"))
-            .toolbar(.hidden, for: .navigationBar)
-            .alert(Text("Turn off School?"), isPresented: $showingSchoolDisableWarning) {
-                Button(String(localized: "Turn Off"), role: .destructive) {
-                    settings.schoolEnabled = false
+
+            Section("Appearance") {
+                Picker(selection: $settings.appearance) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                } label: {
+                    Label("Theme", systemImage: "circle.lefthalf.filled")
                 }
-                Button(String(localized: "Cancel"), role: .cancel) {}
-            } message: {
-                Text("Your subjects and school entries are kept, but hidden until you turn School back on.")
+
+                ColorPickerRow(
+                    title: String(localized: "Accent"),
+                    systemImage: "paintpalette",
+                    selection: $settings.accentColor
+                )
+                ColorPickerRow(
+                    title: String(localized: "Work"),
+                    systemImage: EventType.work.symbolName,
+                    selection: $settings.workColor
+                )
+                if settings.schoolEnabled {
+                    ColorPickerRow(
+                        title: String(localized: "School"),
+                        systemImage: EventType.school.symbolName,
+                        selection: $settings.schoolColor
+                    )
+                }
+                ColorPickerRow(
+                    title: String(localized: "Calendar"),
+                    systemImage: EventType.calendar.symbolName,
+                    selection: $settings.calendarColor
+                )
             }
+
+            Section {
+                Picker(selection: $settings.language) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(language.displayName).tag(language)
+                    }
+                } label: {
+                    Label("Language", systemImage: "globe")
+                }
+            } header: {
+                Text("Language")
+            } footer: {
+                Text("Most text changes immediately. A few system-provided strings update the next time you open Shift.")
+            }
+
+            Section {
+                NavigationLink {
+                    AssistantSettingsView()
+                } label: {
+                    Label("AI Assistant", systemImage: "sparkles")
+                }
+            } footer: {
+                Text("Connect your own Anthropic API key to enable the Assistant.")
+            }
+
+            Section("Data") {
+                LabeledContent {
+                    Text("\(allEvents.count)")
+                } label: {
+                    Label("Entries", systemImage: "calendar")
+                }
+
+                NavigationLink {
+                    ExportView()
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+            }
+        }
+        .alert(Text("Turn off School?"), isPresented: $showingSchoolDisableWarning) {
+            Button(String(localized: "Turn Off"), role: .destructive) {
+                settings.schoolEnabled = false
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text("Your subjects and school entries are kept, but hidden until you turn School back on.")
         }
     }
 

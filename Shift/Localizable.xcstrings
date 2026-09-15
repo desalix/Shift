@@ -2,6 +2,60 @@
   "sourceLanguage": "en",
   "strings": {
     "": {},
+    "%lld entries": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": { "stringUnit": { "state": "translated", "value": "%lld entradas" } }
+      }
+    },
+    "Choose one or more months. Entries are grouped by the month they start in.": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": { "stringUnit": { "state": "translated", "value": "Elige uno o varios meses. Las entradas se agrupan por el mes en que empiezan." } }
+      }
+    },
+    "Export": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": { "stringUnit": { "state": "translated", "value": "Exportar" } }
+      }
+    },
+    "Months with entries will appear here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": { "stringUnit": { "state": "translated", "value": "Aquí aparecerán los meses con entradas." } }
+      }
+    },
+    "Nothing to export": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": { "stringUnit": { "state": "translated", "value": "Nada que exportar" } }
+      }
+    },
+    "One to-do per line.": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": { "stringUnit": { "state": "translated", "value": "Una tarea por línea." } }
+      }
+    },
+    "Select All": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": { "stringUnit": { "state": "translated", "value": "Seleccionar todo" } }
+      }
+    },
+    "Select None": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": { "stringUnit": { "state": "translated", "value": "Deseleccionar todo" } }
+      }
+    },
+    "To-Do": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": { "stringUnit": { "state": "translated", "value": "Pendientes" } }
+      }
+    },
     "·": {
       "extractionState": "manual",
       "localizations": {
