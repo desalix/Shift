@@ -45,7 +45,7 @@ struct ShiftApp: App {
         let syncedConfiguration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false,
-            cloudKitDatabase: .private("iCloud.com.desalas.Shift")
+            cloudKitDatabase: .private("iCloud.com.desalas.ShiftApp")
         )
 
         if let container = try? ModelContainer(for: schema, configurations: [syncedConfiguration]) {
