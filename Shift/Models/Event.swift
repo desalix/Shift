@@ -159,7 +159,6 @@ extension Event {
     enum ValidationError: LocalizedError, Equatable {
         case missingTitle
         case endBeforeStart
-        case missingCompensationType
         case missingRate
         case nonPositiveRate
         case missingSchoolKind
@@ -172,8 +171,6 @@ extension Event {
                 String(localized: "Title is required.")
             case .endBeforeStart:
                 String(localized: "The end time must be after the start time.")
-            case .missingCompensationType:
-                String(localized: "Choose an hourly or a fixed rate.")
             case .missingRate:
                 String(localized: "Enter a rate.")
             case .nonPositiveRate:
@@ -214,9 +211,12 @@ extension Event {
         if endDate <= startDate { errors.append(.endBeforeStart) }
 
         if type == .work {
+            // Pay is optional — a fixed monthly wage means a shift records time
+            // and nothing else. But once a rate *type* is chosen, an amount has
+            // to back it, otherwise the entry claims pay it can't compute.
             switch compensationType {
             case nil:
-                errors.append(.missingCompensationType)
+                break
             case .hourly:
                 if let rate = hourlyRateCents {
                     if rate <= 0 { errors.append(.nonPositiveRate) }

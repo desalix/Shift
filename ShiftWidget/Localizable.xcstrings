@@ -1,24 +1,14 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "+%lld more" : {
+    "Jump straight to adding an entry." : {
       "localizations" : {
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "+%lld más" } }
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Ve directo a añadir una entrada." } }
       }
     },
-    "No to-dos" : {
+    "New Entry" : {
       "localizations" : {
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Sin tareas" } }
-      }
-    },
-    "To-Do" : {
-      "localizations" : {
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Pendientes" } }
-      }
-    },
-    "Your to-do list at a glance." : {
-      "localizations" : {
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Tu lista de tareas de un vistazo." } }
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Nueva entrada" } }
       }
     }
   },

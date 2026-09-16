@@ -13,5 +13,16 @@
 			</array>
 		</dict>
 	</array>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>desalas.Shift.new-entry</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>New Entry</string>
+			<key>UIApplicationShortcutItemIconType</key>
+			<string>UIApplicationShortcutIconTypeAdd</string>
+		</dict>
+	</array>
 </dict>
 </plist>

@@ -7,9 +7,10 @@ import SwiftUI
 
 /// One box in the month grid.
 ///
-/// Fits as many event chips as the box height allows and collapses the rest
-/// into a "+N More" line. Tapping anywhere in the cell — including that line —
-/// opens the full scrollable day list.
+/// Work defines the day: a working day is tinted end to end and names the shift
+/// in bold under the date. School and calendar entries are the day's contents
+/// rather than its character, so they stay as chips below, with the overflow
+/// folded into a "+N More" line.
 struct DayCell: View {
     let day: Date
     let events: [Event]
@@ -17,20 +18,27 @@ struct DayCell: View {
     let isToday: Bool
 
     @Environment(AppSettings.self) private var settings
-    @Environment(\.calendar) private var calendar
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private let chipHeight: CGFloat = 14
     private let chipSpacing: CGFloat = 1.5
+    private let headlineHeight: CGFloat = 15
 
     var body: some View {
+        let summary = WorkDaySummary(events: events)
+
         GeometryReader { proxy in
-            let capacity = slotCapacity(in: proxy.size.height)
-            let layout = ChipLayout(total: events.count, capacity: capacity)
+            let capacity = slotCapacity(in: proxy.size.height, hasHeadline: summary.headline != nil)
+            let layout = ChipLayout(total: summary.otherEvents.count, capacity: capacity)
 
             VStack(alignment: .leading, spacing: chipSpacing) {
                 dayNumber
 
-                ForEach(events.prefix(layout.visibleCount)) { event in
+                if let headline = summary.headline {
+                    workHeadline(headline, summary: summary)
+                }
+
+                ForEach(summary.otherEvents.prefix(layout.visibleCount)) { event in
                     EventChip(event: event, height: chipHeight)
                 }
 
@@ -49,10 +57,22 @@ struct DayCell: View {
             .padding(.top, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(isInDisplayedMonth ? Color(.systemBackground) : Color(.secondarySystemBackground))
+        .background(background(for: summary))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel)
+        .accessibilityLabel(accessibilityLabel(for: summary))
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// Tint sits over the normal backing so out-of-month days stay recessed
+    /// even when they are working days.
+    private func background(for summary: WorkDaySummary) -> some View {
+        let base = isInDisplayedMonth ? Color(.systemBackground) : Color(.secondarySystemBackground)
+        return ZStack {
+            base
+            if let lead = summary.leadEvent {
+                settings.color(for: lead).opacity(isInDisplayedMonth ? 0.18 : 0.10)
+            }
+        }
     }
 
     private var dayNumber: some View {
@@ -69,17 +89,60 @@ struct DayCell: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// The shift's name (or a count), a step larger and heavier than the chips
+    /// so the day reads as "work" before anything else does.
+    private func workHeadline(_ headline: String, summary: WorkDaySummary) -> some View {
+        HStack(spacing: 3) {
+            Text(headline)
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .foregroundStyle(.primary)
+                .layoutPriority(-1)
+
+            if summary.showsRecurrenceMarker, let lead = summary.leadEvent {
+                let color = settings.color(for: lead)
+                if horizontalSizeClass == .regular {
+                    Text("Rec")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(color)
+                        .fixedSize()
+                } else {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 3.5, height: 3.5)
+                        .fixedSize()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: headlineHeight)
+    }
+
     private var numberColor: Color {
         if isToday { return .white }
         return isInDisplayedMonth ? .primary : .secondary
     }
 
-    /// How many chip-sized rows fit below the day number.
-    private func slotCapacity(in height: CGFloat) -> Int {
+    /// How many chip-sized rows fit below the day number, once the work
+    /// headline has taken its share.
+    private func slotCapacity(in height: CGFloat, hasHeadline: Bool) -> Int {
         let dayNumberBlock: CGFloat = 17 + chipSpacing
-        let usable = height - dayNumberBlock - 4
+        let headlineBlock: CGFloat = hasHeadline ? headlineHeight + chipSpacing : 0
+        let usable = height - dayNumberBlock - headlineBlock - 4
         guard usable > 0 else { return 0 }
         return max(0, Int(usable / (chipHeight + chipSpacing)))
+    }
+
+    private func accessibilityLabel(for summary: WorkDaySummary) -> Text {
+        let dateText = day.formatted(.dateTime.weekday(.wide).day().month(.wide))
+        if summary.isWorkDay {
+            return Text("\(dateText), work day")
+        }
+        if events.isEmpty {
+            return Text("\(dateText), no entries")
+        }
+        return Text("\(dateText), \(events.count) entries")
     }
 }
 
@@ -159,15 +222,5 @@ private struct EventChip: View {
         .padding(.trailing, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(color.opacity(0.16), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
-    }
-}
-
-extension DayCell {
-    private var accessibilityLabel: Text {
-        let dateText = day.formatted(.dateTime.weekday(.wide).day().month(.wide))
-        if events.isEmpty {
-            return Text("\(dateText), no entries")
-        }
-        return Text("\(dateText), \(events.count) entries")
     }
 }

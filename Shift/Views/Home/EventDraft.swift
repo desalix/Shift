@@ -19,6 +19,9 @@ extension EventEditorView {
         var endDate: Date = Date().addingTimeInterval(3600)
         var address: String = ""
 
+        /// Whether this shift records money at all. Off means the entry is a
+        /// record of time — the fixed-monthly-wage case.
+        var tracksPay: Bool = true
         var compensationType: CompensationType = .hourly
         /// Held as text so partially-typed input ("12.") isn't destroyed by
         /// round-tripping through a number on every keystroke.
@@ -38,8 +41,9 @@ extension EventEditorView {
         init() {}
 
         /// A fresh entry, snapped to the next whole hour on the chosen day.
-        init(initialDate: Date, calendar: Calendar, defaultType: EventType) {
+        init(initialDate: Date, calendar: Calendar, defaultType: EventType, tracksPay: Bool = true) {
             type = defaultType
+            self.tracksPay = tracksPay
 
             let now = Date()
             let hour: Int
@@ -65,6 +69,8 @@ extension EventEditorView {
             startDate = event.startDate
             endDate = event.endDate
             address = event.address ?? ""
+            // A stored compensation type is the record of pay being tracked.
+            tracksPay = event.compensationType != nil
             compensationType = event.compensationType ?? .hourly
             switch event.compensationType {
             case .hourly:
@@ -106,6 +112,8 @@ extension EventEditorView {
             if let color = preset.colorName { colorName = color }
 
             if preset.type == .work, let compensation = preset.compensationType {
+                // A preset carrying a rate is a statement that this shift is paid.
+                tracksPay = true
                 compensationType = compensation
                 switch compensation {
                 case .hourly:
@@ -139,12 +147,13 @@ extension EventEditorView {
             let trimmedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
             event.address = (type != .school && !trimmedAddress.isEmpty) ? trimmedAddress : nil
 
-            if type == .work {
+            if type == .work, tracksPay {
                 event.compensationType = compensationType
                 let cents = Money.cents(from: rateText)
                 event.hourlyRateCents = compensationType == .hourly ? cents : nil
                 event.fixedRateCents = compensationType == .fixed ? cents : nil
             } else {
+                // No compensation type is how an untracked-pay shift is stored.
                 event.compensationType = nil
                 event.hourlyRateCents = nil
                 event.fixedRateCents = nil

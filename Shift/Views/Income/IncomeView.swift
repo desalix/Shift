@@ -55,11 +55,11 @@ private struct MonthIncome: View {
 
     var body: some View {
         Group {
-            if payingEvents.isEmpty {
+            if workEvents.isEmpty {
                 ContentUnavailableView {
                     Label("No income this month", systemImage: "eurosign.circle")
                 } description: {
-                    Text("Work entries with an hourly or fixed rate will appear here.")
+                    Text("Work entries will appear here.")
                 }
             } else {
                 List {
@@ -67,7 +67,7 @@ private struct MonthIncome: View {
                         .listRowBackground(Color.clear)
 
                     Section {
-                        ForEach(payingEvents) { event in
+                        ForEach(workEvents) { event in
                             NavigationLink {
                                 EventDetailView(event: event)
                             } label: {
@@ -75,7 +75,7 @@ private struct MonthIncome: View {
                             }
                         }
                     } header: {
-                        Text("\(payingEvents.count) shifts")
+                        Text("\(summary.shiftCount) shifts")
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -89,7 +89,7 @@ private struct MonthIncome: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            Text(Money.string(cents: totalCents, locale: locale))
+            Text(Money.string(cents: summary.totalCents, locale: locale))
                 .font(.system(size: 40, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .contentTransition(.numericText())
@@ -103,9 +103,9 @@ private struct MonthIncome: View {
                 )
                 StatPill(
                     title: String(localized: "Shifts"),
-                    value: "\(payingEvents.count)"
+                    value: "\(summary.shiftCount)"
                 )
-                if let average = averageHourlyCents {
+                if let average = summary.averageHourlyCents {
                     StatPill(
                         title: String(localized: "Avg/hour"),
                         value: Money.string(cents: average, locale: locale)
@@ -122,31 +122,15 @@ private struct MonthIncome: View {
 
     // MARK: - Totals
 
-    /// Work entries that actually contribute money. A rate-less work entry is
-    /// still a real shift, but listing it under a paycheck total with €0 would
-    /// only be confusing.
-    private var payingEvents: [Event] {
-        workEvents.filter { $0.earningsInCents > 0 }
-    }
-
-    private var totalCents: Int {
-        payingEvents.reduce(0) { $0 + $1.earningsInCents }
-    }
-
-    private var totalMinutes: Int {
-        payingEvents.reduce(0) { $0 + $1.durationInMinutes }
+    /// Every work entry in the month, paid or not: an unpaid shift is still a
+    /// shift, and hiding it made worked time disappear from the one screen that
+    /// is about worked time.
+    private var summary: MonthIncomeSummary {
+        MonthIncomeSummary(workEvents: workEvents)
     }
 
     private var hoursText: String {
-        let hours = Double(totalMinutes) / 60.0
-        return hours.formatted(.number.precision(.fractionLength(0 ... 1)).locale(locale))
-    }
-
-    /// Blended rate across the month. Only meaningful once there is measurable
-    /// time — a month of purely fixed-rate one-off jobs has no hourly figure.
-    private var averageHourlyCents: Int? {
-        guard totalMinutes > 0 else { return nil }
-        return Int((Double(totalCents) * 60.0 / Double(totalMinutes)).rounded())
+        summary.totalHours.formatted(.number.precision(.fractionLength(0 ... 1)).locale(locale))
     }
 }
 
@@ -204,9 +188,16 @@ private struct IncomeRow: View {
 
             Spacer(minLength: 0)
 
-            Text(Money.string(cents: event.earningsInCents, locale: locale))
-                .font(.body.weight(.semibold))
-                .monospacedDigit()
+            if event.earningsInCents > 0 {
+                Text(Money.string(cents: event.earningsInCents, locale: locale))
+                    .font(.body.weight(.semibold))
+                    .monospacedDigit()
+            } else {
+                // Worked, but no pay recorded — a dash rather than €0.
+                Text(verbatim: "—")
+                    .font(.body)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.vertical, 3)
     }

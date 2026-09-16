@@ -12,8 +12,7 @@ struct HomeView: View {
     @Binding var displayedMonth: Date
 
     @Environment(\.calendar) private var calendar
-
-    @State private var isPresentingEditor = false
+    @Environment(AppRouter.self) private var router
 
     var body: some View {
         // Re-creating the grid when the month changes is what re-runs the
@@ -26,14 +25,16 @@ struct HomeView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        isPresentingEditor = true
+                        router.requestNewEntry()
                     } label: {
                         Label("New entry", systemImage: "plus")
                     }
                 }
             }
-            .sheet(isPresented: $isPresentingEditor) {
-                EventEditorView(mode: .create(initialDate: defaultNewEventDate))
+            // The toolbar +, the widget and the app-icon shortcut all raise the
+            // same flag, so they open one sheet rather than three.
+            .sheet(isPresented: Bindable(router).showsNewEntry) {
+                EventEditorView(mode: .create(initialDate: defaultNewEventDate, type: nil))
             }
     }
 

@@ -58,7 +58,7 @@ struct EventDetailView: View {
                 }
             }
 
-            if event.type == .work {
+            if event.type == .work, event.compensationType != nil {
                 Section("Pay") {
                     if let rate = event.rateText {
                         DetailRow(label: String(localized: "Rate"), value: rate)

@@ -6,8 +6,11 @@
 import SwiftUI
 import SwiftData
 
-/// The scrollable list of everything on one day, reached by tapping a day box
-/// (or its "+N More" line).
+/// Everything on one day, reached by tapping a day box (or its "+N More" line).
+///
+/// Work comes first and is always on screen — even an empty day shows the block,
+/// offering to start a shift — because whether the day was worked is the
+/// question this app exists to answer.
 struct DayEventsView: View {
     let day: Date
 
@@ -39,43 +42,47 @@ struct DayEventsView: View {
     }
 
     var body: some View {
+        let summary = WorkDaySummary(events: events)
+
         NavigationStack {
-            Group {
-                if events.isEmpty {
-                    ContentUnavailableView {
-                        Label("No entries", systemImage: "calendar.badge.exclamationmark")
-                    } description: {
-                        Text("Nothing scheduled for this day.")
-                    } actions: {
-                        Button("Add Entry") {
-                            editorMode = .create(initialDate: day)
+            List {
+                Section("Work") {
+                    if summary.workEvents.isEmpty {
+                        Button {
+                            editorMode = .create(initialDate: day, type: .work)
+                        } label: {
+                            Label("Add work day", systemImage: "plus.circle.fill")
                         }
-                        .buttonStyle(.borderedProminent)
+                    } else {
+                        ForEach(summary.workEvents) { event in
+                            NavigationLink {
+                                EventDetailView(event: event)
+                            } label: {
+                                WorkSummaryRow(event: event)
+                            }
+                            .swipeActions(edge: .trailing) {
+                                deleteButton(for: event)
+                            }
+                        }
                     }
-                } else {
-                    List {
-                        ForEach(events) { event in
+                }
+
+                if !summary.otherEvents.isEmpty {
+                    Section("Other entries") {
+                        ForEach(summary.otherEvents) { event in
                             NavigationLink {
                                 EventDetailView(event: event)
                             } label: {
                                 EventRow(event: event)
                             }
                             .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
-                                    // Resolve membership before prompting so a
-                                    // one-off entry isn't asked to choose
-                                    // between two identical outcomes.
-                                    pendingDeletionHasSiblings = EventSeries.hasSiblings(event, context: modelContext)
-                                    pendingDeletion = event
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
+                                deleteButton(for: event)
                             }
                         }
                     }
-                    .listStyle(.insetGrouped)
                 }
             }
+            .listStyle(.insetGrouped)
             .navigationTitle(day.formatted(.dateTime.weekday(.wide).day().month(.wide)))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -84,7 +91,7 @@ struct DayEventsView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        editorMode = .create(initialDate: day)
+                        editorMode = .create(initialDate: day, type: nil)
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -124,6 +131,17 @@ struct DayEventsView: View {
         }
     }
 
+    private func deleteButton(for event: Event) -> some View {
+        Button(role: .destructive) {
+            // Resolve membership before prompting so a one-off entry isn't
+            // asked to choose between two identical outcomes.
+            pendingDeletionHasSiblings = EventSeries.hasSiblings(event, context: modelContext)
+            pendingDeletion = event
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+    }
+
     private func delete(_ event: Event, scope: EventSeries.Scope) {
         EventSeries.delete(event, scope: scope, context: modelContext)
         modelContext.saveChanges(reporting: errorReporter, while: String(localized: "Deleting"))
@@ -131,7 +149,51 @@ struct DayEventsView: View {
     }
 }
 
-/// One line in a day list: title, time range, and the type/rate context that
+/// A shift in the day's Work block: when it ran, what it pays, what it earned.
+/// With pay untracked it shows the times alone rather than an empty €0.
+struct WorkSummaryRow: View {
+    let event: Event
+
+    @Environment(\.calendar) private var calendar
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(event.displayTitle)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+
+                if event.isRecurring { RecurrenceBadge() }
+
+                Spacer(minLength: 0)
+
+                if event.earningsInCents > 0 {
+                    Text(Money.string(cents: event.earningsInCents, locale: locale))
+                        .font(.body.weight(.semibold))
+                        .monospacedDigit()
+                }
+            }
+
+            HStack(spacing: 6) {
+                Text(event.timeRangeText(calendar: calendar, locale: locale))
+                Text(verbatim: "·")
+                Text(event.durationText)
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+
+            if let rate = event.rateText {
+                Text(rate)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+/// One line in a day list: title, time range, and the type context that
 /// distinguishes two same-titled entries at a glance.
 struct EventRow: View {
     let event: Event
@@ -170,13 +232,6 @@ struct EventRow: View {
             }
 
             Spacer(minLength: 0)
-
-            if event.type == .work, event.earningsInCents > 0 {
-                Text(Money.string(cents: event.earningsInCents, locale: locale))
-                    .font(.subheadline.weight(.medium))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
         }
         .padding(.vertical, 4)
     }

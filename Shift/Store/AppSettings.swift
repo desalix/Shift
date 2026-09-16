@@ -101,6 +101,7 @@ final class AppSettings {
         static let appearance = "settings.appearance"
         static let assistantModel = "settings.assistantModel"
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
+        static let tracksPayByDefault = "settings.tracksPayByDefault"
     }
 
     private let defaults: UserDefaults
@@ -114,6 +115,10 @@ final class AppSettings {
     var appearance: AppearanceMode { didSet { write(appearance.rawValue, Key.appearance) } }
     var assistantModel: AssistantModel { didSet { write(assistantModel.rawValue, Key.assistantModel) } }
     var hasCompletedOnboarding: Bool { didSet { write(hasCompletedOnboarding, Key.hasCompletedOnboarding) } }
+    /// Seeds the editor's "Track pay" toggle for the next work entry. Hourly
+    /// workers leave it on and never think about it; someone on a fixed wage
+    /// switches it off once.
+    var tracksPayByDefault: Bool { didSet { write(tracksPayByDefault, Key.tracksPayByDefault) } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -127,6 +132,9 @@ final class AppSettings {
         appearance = AppearanceMode(rawValue: defaults.string(forKey: Key.appearance) ?? "") ?? .system
         assistantModel = AssistantModel(rawValue: defaults.string(forKey: Key.assistantModel) ?? "") ?? .opus
         hasCompletedOnboarding = defaults.bool(forKey: Key.hasCompletedOnboarding)
+        // `bool(forKey:)` can't tell "never set" from "false", and the useful
+        // default here is on.
+        tracksPayByDefault = defaults.object(forKey: Key.tracksPayByDefault) as? Bool ?? true
     }
 
     /// The colour used for an event type, before any per-event override.

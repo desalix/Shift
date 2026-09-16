@@ -99,11 +99,6 @@
 			path = ShiftWidget;
 			sourceTree = "<group>";
 		};
-		AE260F033044D9EB008B763B /* ShiftShared */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = ShiftShared;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -142,7 +137,6 @@
 			isa = PBXGroup;
 			children = (
 				AE260EB73044D9E8008B763B /* Shift */,
-				AE260F033044D9EB008B763B /* ShiftShared */,
 				AE260F023044D9EB008B763B /* ShiftWidget */,
 				AE260EC93044D9EB008B763B /* ShiftTests */,
 				AE260ED33044D9EB008B763B /* ShiftUITests */,
@@ -180,7 +174,6 @@
 			);
 			fileSystemSynchronizedGroups = (
 				AE260EB73044D9E8008B763B /* Shift */,
-				AE260F033044D9EB008B763B /* ShiftShared */,
 			);
 			name = Shift;
 			packageProductDependencies = (
@@ -249,7 +242,6 @@
 			);
 			fileSystemSynchronizedGroups = (
 				AE260F023044D9EB008B763B /* ShiftWidget */,
-				AE260F033044D9EB008B763B /* ShiftShared */,
 			);
 			name = ShiftWidgetExtension;
 			packageProductDependencies = (
@@ -393,7 +385,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Shift/Shift.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SU93KS97PY;
@@ -427,7 +418,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Shift/Shift.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SU93KS97PY;
@@ -511,11 +501,11 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -570,10 +560,10 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -666,7 +656,6 @@
 		AE260F0A3044D9EB008B763B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = ShiftWidget/ShiftWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SU93KS97PY;
@@ -696,7 +685,6 @@
 		AE260F0B3044D9EB008B763B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = ShiftWidget/ShiftWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SU93KS97PY;

@@ -13,12 +13,14 @@ import SwiftData
 /// is the only always-optional field.
 struct EventEditorView: View {
     enum Mode: Identifiable {
-        case create(initialDate: Date)
+        /// `type` preselects the segmented picker — the day sheet's
+        /// "Add work day" button uses it so Work is already chosen.
+        case create(initialDate: Date, type: EventType?)
         case edit(Event)
 
         var id: String {
             switch self {
-            case .create(let date): "create-\(date.timeIntervalSinceReferenceDate)"
+            case .create(let date, let type): "create-\(date.timeIntervalSinceReferenceDate)-\(type?.rawValue ?? "any")"
             case .edit(let event): "edit-\(event.id.uuidString)"
             }
         }
@@ -166,8 +168,12 @@ struct EventEditorView: View {
         }
     }
 
+    @ViewBuilder
     private var paySection: some View {
-        Section("Pay") {
+        Section {
+            Toggle("Track pay", isOn: $draft.tracksPay)
+
+            if draft.tracksPay {
             Picker("Rate type", selection: $draft.compensationType) {
                 Text("Hourly").tag(CompensationType.hourly)
                 Text("Fixed").tag(CompensationType.fixed)
@@ -195,6 +201,13 @@ struct EventEditorView: View {
                         .monospacedDigit()
                 }
                 .font(.footnote)
+            }
+            }
+        } header: {
+            Text("Pay")
+        } footer: {
+            if !draft.tracksPay {
+                Text("This shift records time only. It still appears in Income, without an amount.")
             }
         }
     }
@@ -371,8 +384,13 @@ struct EventEditorView: View {
         guard !didLoad else { return }
         didLoad = true
         switch mode {
-        case .create(let date):
-            draft = Draft(initialDate: date, calendar: calendar, defaultType: settings.availableEventTypes.first ?? .calendar)
+        case .create(let date, let type):
+            draft = Draft(
+                initialDate: date,
+                calendar: calendar,
+                defaultType: type ?? settings.availableEventTypes.first ?? .calendar,
+                tracksPay: settings.tracksPayByDefault
+            )
         case .edit(let event):
             draft = Draft(event: event)
         }
@@ -415,6 +433,11 @@ struct EventEditorView: View {
     }
 
     private func commit(scope: EventSeries.Scope) {
+        // Whatever was chosen here becomes the default for the next shift, so
+        // an hourly worker never touches the toggle and a salaried one sets it
+        // once.
+        if draft.type == .work { settings.tracksPayByDefault = draft.tracksPay }
+
         switch mode {
         case .edit(let event):
             draft.write(into: event, subject: selectedSubject, preset: selectedPreset)

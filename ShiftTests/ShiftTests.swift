@@ -157,8 +157,13 @@ struct ValidationTests {
         #expect(validate(end: start.addingTimeInterval(-60)).contains(.endBeforeStart))
     }
 
-    @Test func workRequiresCompensationAndAPositiveRate() {
-        #expect(validate(compensation: nil, hourly: nil).contains(.missingCompensationType))
+    /// Pay is optional — a fixed monthly wage means the shift records time only.
+    @Test func workWithoutPayIsValid() {
+        #expect(validate(compensation: nil, hourly: nil).isEmpty)
+    }
+
+    /// But choosing a rate type and leaving the amount out is still incoherent.
+    @Test func aChosenRateTypeStillNeedsAPositiveRate() {
         #expect(validate(hourly: nil).contains(.missingRate))
         #expect(validate(hourly: 0).contains(.nonPositiveRate))
     }
@@ -730,53 +735,6 @@ struct EventSeriesTests {
     }
 }
 
-// MARK: - To-do list
-
-struct TodoStorageTests {
-    @Test func entriesAreNonBlankTrimmedLinesInOrder() {
-        let text = "Buy milk\n\n   Gym  \n\t\nCall mum\n"
-        #expect(TodoStorage.entries(from: text) == ["Buy milk", "Gym", "Call mum"])
-    }
-
-    @Test func emptyTextHasNoEntries() {
-        #expect(TodoStorage.entries(from: "").isEmpty)
-        #expect(TodoStorage.entries(from: "\n \n").isEmpty)
-    }
-}
-
-struct TodoWidgetLayoutTests {
-    private func items(_ count: Int) -> [String] { (1 ... max(1, count)).prefix(count).map { "Item \($0)" } }
-
-    /// Column-major: the left column is filled completely before the right.
-    @Test func fillsLeftColumnFirst() {
-        let layout = TodoWidgetLayout(entries: items(7), rowsPerColumn: 5)
-        #expect(layout.left == (1 ... 5).map { .entry("Item \($0)") })
-        #expect(layout.right == [.entry("Item 6"), .entry("Item 7")])
-    }
-
-    @Test func exactFitShowsEverythingWithoutOverflow() {
-        let layout = TodoWidgetLayout(entries: items(10), rowsPerColumn: 5)
-        #expect(layout.left.count == 5)
-        #expect(layout.right.count == 5)
-        #expect(layout.right.last == .entry("Item 10"))
-    }
-
-    /// The bottom-right cell reports what's hidden, and every entry is counted.
-    @Test func overflowTakesTheBottomRightCell() {
-        let layout = TodoWidgetLayout(entries: items(13), rowsPerColumn: 5)
-        #expect(layout.left.count == 5)
-        #expect(layout.right.count == 5)
-        #expect(layout.right.last == .overflow(4))
-        #expect(layout.right.dropLast().last == .entry("Item 9"))
-    }
-
-    @Test func emptyInputProducesEmptyColumns() {
-        let layout = TodoWidgetLayout(entries: [], rowsPerColumn: 5)
-        #expect(layout.left.isEmpty)
-        #expect(layout.right.isEmpty)
-    }
-}
-
 // MARK: - Month export
 
 @MainActor
@@ -855,5 +813,137 @@ struct MonthExporterTests {
         let months = MonthExporter.availableMonths(for: events, calendar: calendar)
         #expect(months.map { MonthExporter.monthKey(for: $0.start, calendar: calendar) } == ["2026-08", "2026-06"])
         #expect(months.map(\.entryCount) == [2, 1])
+    }
+}
+
+// MARK: - Work day summary
+
+@MainActor
+struct WorkDaySummaryTests {
+    private func event(_ title: String, _ type: EventType, recurring: Bool = false) -> Event {
+        let start = Date(timeIntervalSinceReferenceDate: 0)
+        return Event(
+            title: title, type: type, startDate: start,
+            endDate: start.addingTimeInterval(3600), isRecurring: recurring
+        )
+    }
+
+    @Test func aDayWithoutWorkHasNoHeadline() {
+        let summary = WorkDaySummary(events: [event("Dentist", .calendar), event("Exam prep", .school)])
+        #expect(!summary.isWorkDay)
+        #expect(summary.headline == nil)
+        #expect(summary.otherEvents.count == 2)
+        #expect(summary.leadEvent == nil)
+    }
+
+    /// One shift names the day; school and calendar entries stay as chips.
+    @Test func oneShiftNamesTheDay() {
+        let summary = WorkDaySummary(events: [event("Bar Central", .work), event("Gym", .calendar)])
+        #expect(summary.isWorkDay)
+        #expect(summary.headline == "Bar Central")
+        #expect(summary.workEvents.count == 1)
+        #expect(summary.otherEvents.map(\.displayTitle) == ["Gym"])
+    }
+
+    /// Two titles would truncate to noise in a box this small, so it counts.
+    @Test func severalShiftsCollapseToACount() throws {
+        let summary = WorkDaySummary(events: [event("Morning", .work), event("Evening", .work)])
+        let headline = try #require(summary.headline)
+        #expect(headline.contains("2"))
+        #expect(headline != "Morning")
+        #expect(summary.otherEvents.isEmpty)
+    }
+
+    /// A count has no single entry to hang a recurrence marker on.
+    @Test func theRecurrenceMarkerIsOnlyForASingleShift() {
+        #expect(WorkDaySummary(events: [event("Thursday", .work, recurring: true)]).showsRecurrenceMarker)
+        #expect(!WorkDaySummary(events: [event("A", .work, recurring: true), event("B", .work, recurring: true)]).showsRecurrenceMarker)
+        #expect(!WorkDaySummary(events: [event("One off", .work)]).showsRecurrenceMarker)
+    }
+}
+
+// MARK: - Income totals
+
+@MainActor
+struct MonthIncomeSummaryTests {
+    private func shift(minutes: Int, rate: Int?) -> Event {
+        let start = Date(timeIntervalSinceReferenceDate: 0)
+        return Event(
+            title: "Shift", type: .work, startDate: start,
+            endDate: start.addingTimeInterval(TimeInterval(minutes * 60)),
+            compensationType: rate == nil ? nil : .hourly,
+            hourlyRateCents: rate
+        )
+    }
+
+    /// An unpaid shift is still worked time — it just earns nothing.
+    @Test func unpaidShiftsAddHoursButNoMoney() {
+        let summary = MonthIncomeSummary(workEvents: [shift(minutes: 120, rate: 1000), shift(minutes: 60, rate: nil)])
+        #expect(summary.totalCents == 2000)
+        #expect(summary.totalMinutes == 180)
+        #expect(summary.paidMinutes == 120)
+        #expect(summary.shiftCount == 2)
+    }
+
+    /// Averaging over unpaid time would report €1.54/h for €10/h work.
+    @Test func theAverageIgnoresUnpaidTime() {
+        let summary = MonthIncomeSummary(workEvents: [shift(minutes: 60, rate: 1000), shift(minutes: 600, rate: nil)])
+        #expect(summary.averageHourlyCents == 1000)
+    }
+
+    @Test func aMonthOfUnpaidWorkTotalsZeroWithoutDividingByZero() {
+        let summary = MonthIncomeSummary(workEvents: [shift(minutes: 300, rate: nil)])
+        #expect(summary.totalCents == 0)
+        #expect(summary.averageHourlyCents == nil)
+        #expect(summary.totalHours == 5)
+    }
+
+    @Test func anEmptyMonthIsAllZeroes() {
+        let summary = MonthIncomeSummary(workEvents: [])
+        #expect(summary.totalCents == 0)
+        #expect(summary.shiftCount == 0)
+        #expect(summary.averageHourlyCents == nil)
+    }
+}
+
+// MARK: - Assistant, pay optional
+
+@MainActor
+struct AssistantUntrackedPayTests {
+    private let timeZone = TimeZone(identifier: "Europe/Madrid")!
+
+    private func spec(from raw: [String: Any]) throws -> EventSpec {
+        let actions = AssistantTools.actions(
+            toolName: AssistantTools.createEvents,
+            input: ["events": [raw]],
+            timeZone: timeZone
+        )
+        guard case .createEvent(let spec) = try #require(actions.first) else {
+            Issue.record("expected a createEvent action")
+            throw CancellationError()
+        }
+        return spec
+    }
+
+    /// The model omitting a rate now means "pay isn't tracked" rather than
+    /// producing a rate-less hourly shift that fails validation.
+    @Test func workWithoutARateIsUntrackedPay() throws {
+        let spec = try spec(from: [
+            "title": "Turno", "type": "work",
+            "start": "2026-09-03T14:30:00", "end": "2026-09-03T19:00:00",
+        ])
+        #expect(spec.compensationType == nil)
+        #expect(spec.hourlyRateCents == nil)
+        #expect(spec.validationErrors(resolvedSubject: nil).isEmpty)
+    }
+
+    @Test func aBareRateIsTakenAsHourly() throws {
+        let spec = try spec(from: [
+            "title": "Turno", "type": "work", "rate_cents": 1250,
+            "start": "2026-09-03T14:30:00", "end": "2026-09-03T19:00:00",
+        ])
+        #expect(spec.compensationType == .hourly)
+        #expect(spec.hourlyRateCents == 1250)
+        #expect(spec.validationErrors(resolvedSubject: nil).isEmpty)
     }
 }

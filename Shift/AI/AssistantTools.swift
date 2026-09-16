@@ -54,11 +54,11 @@ enum AssistantTools {
             "compensation_type": [
                 "type": "string",
                 "enum": ["hourly", "fixed"],
-                "description": "Required when type is work.",
+                "description": "Optional, work only. Omit when the user does not track pay for this shift.",
             ],
             "rate_cents": [
                 "type": "integer",
-                "description": "Required when type is work. Integer cents: 1250 means 12.50 euros. Interpreted per hour when compensation_type is hourly, otherwise as the total.",
+                "description": "Optional, work only. Integer cents: 1250 means 12.50 euros. Interpreted per hour when compensation_type is hourly, otherwise as the total. Omit when pay is not tracked.",
             ],
             "school_kind": [
                 "type": "string",
@@ -209,6 +209,9 @@ enum AssistantTools {
 
         let rateCents = raw["rate_cents"] as? Int
         let compensation = (raw["compensation_type"] as? String).flatMap(CompensationType.init(rawValue:))
+        let resolvedCompensation: CompensationType? = type == .work
+            ? (compensation ?? (rateCents == nil ? nil : .hourly))
+            : nil
 
         return EventSpec(
             title: (raw["title"] as? String) ?? "",
@@ -216,9 +219,12 @@ enum AssistantTools {
             startDate: start,
             endDate: end,
             address: (raw["address"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-            compensationType: type == .work ? (compensation ?? .hourly) : nil,
-            hourlyRateCents: type == .work && (compensation ?? .hourly) == .hourly ? rateCents : nil,
-            fixedRateCents: type == .work && compensation == .fixed ? rateCents : nil,
+            // No rate and no type means pay simply isn't tracked; a bare rate
+            // is taken as hourly. Defaulting to hourly regardless used to
+            // invent a rate-less hourly shift that then failed validation.
+            compensationType: resolvedCompensation,
+            hourlyRateCents: resolvedCompensation == .hourly ? rateCents : nil,
+            fixedRateCents: resolvedCompensation == .fixed ? rateCents : nil,
             schoolKind: type == .school
                 ? ((raw["school_kind"] as? String).flatMap(SchoolEventKind.init(rawValue:)) ?? .other)
                 : nil,
@@ -261,7 +267,7 @@ enum AssistantTools {
             "- All times are local wall-clock in the format \(dateFormat), with no time zone offset.",
             "- Money is integer cents. 12.50 euros is 1250.",
             "- Expand every repeating request into individual entries yourself, applying skip rules (alternate weeks, public holidays, term dates) as you go. Do not ask the app to repeat anything.",
-            "- A work entry needs a compensation type and a rate. A school entry needs a kind and a subject. Notes are optional and capped at 250 characters.",
+            "- A work entry may record pay, but does not have to: omit compensation_type and rate_cents when the user does not track pay, for example on a fixed monthly wage. A school entry needs a kind and a subject. Notes are optional and capped at 250 characters.",
             "- If the user asks for something school-related while School is disabled, propose enable_school first and say why.",
             "- If a school subject does not exist yet, propose create_subject before the entry that needs it.",
             "",

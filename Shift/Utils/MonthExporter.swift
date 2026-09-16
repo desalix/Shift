@@ -99,7 +99,11 @@ enum MonthExporter {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .custom { date, encoder in
             var container = encoder.singleValueContainer()
-            try container.encode(date.formatted(Date.ISO8601FormatStyle(timeZone: timeZone)))
+            // Pin the offset separator: the default is `.omitted`, which renders
+            // "+0200" and changed behaviour between OS versions. "+02:00" is the
+            // form readers expect, so state it rather than inherit it.
+            let style = Date.ISO8601FormatStyle(timeZone: timeZone).timeZoneSeparator(.colon)
+            try container.encode(date.formatted(style))
         }
         return try encoder.encode(document)
     }

@@ -11,8 +11,8 @@ import SwiftData
 struct RootView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(AppErrorReporter.self) private var errorReporter
+    @Environment(AppRouter.self) private var router
 
-    @State private var selection: AppTab = .home
     /// Shared by Home and Income so switching between them keeps the month.
     @State private var displayedMonth: Date = Date()
 
@@ -25,11 +25,11 @@ struct RootView: View {
             }
         }
         .animation(.snappy(duration: 0.25), value: settings.hasCompletedOnboarding)
-        // The widget opens `shift://todo`.
-        .onOpenURL { url in
-            if url.scheme == "shift", url.host() == "todo" {
-                selection = .todo
-            }
+        // The widget arrives as a URL; the app-icon shortcut as a notification
+        // from the scene delegate. Both mean the same thing.
+        .onOpenURL { router.handle($0) }
+        .onReceive(NotificationCenter.default.publisher(for: AppRouter.newEntryShortcutNotification)) { _ in
+            router.requestNewEntry()
         }
         // Hosted at the root so a failed write is reported no matter which
         // screen — or which presented sheet — triggered it.
@@ -44,7 +44,7 @@ struct RootView: View {
     }
 
     private var shell: some View {
-        TabView(selection: $selection) {
+        TabView(selection: Bindable(router).selectedTab) {
             ForEach(AppTab.allCases) { tab in
                 Tab(tab.title, systemImage: tab.symbolName, value: tab) {
                     NavigationStack {
@@ -65,8 +65,6 @@ struct RootView: View {
             HomeView(displayedMonth: $displayedMonth)
         case .assistant:
             AssistantView()
-        case .todo:
-            TodoView()
         case .income:
             IncomeView(displayedMonth: $displayedMonth)
         case .settings:

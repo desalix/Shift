@@ -10,7 +10,9 @@ import SwiftData
 struct ShiftApp: App {
     @State private var settings = AppSettings()
     @State private var errorReporter = AppErrorReporter()
-    @State private var todoStore = TodoListStore()
+    @State private var router = AppRouter()
+    // Home-screen quick actions are UIKit-only; this is what receives them.
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     private let container: ModelContainer
 
     init() {
@@ -22,7 +24,7 @@ struct ShiftApp: App {
             RootView()
                 .environment(settings)
                 .environment(errorReporter)
-                .environment(todoStore)
+                .environment(router)
                 .preferredColorScheme(settings.appearance.colorScheme)
                 .tint(settings.accentColor.color)
                 .environment(\.locale, settings.language.locale ?? Locale.autoupdatingCurrent)
