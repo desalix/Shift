@@ -1,6 +1,18 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "CFBundleName" : {
+      "comment" : "Bundle name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shift"
+          }
+        }
+      }
+    },
     "New Entry" : {
       "comment" : "Title of the Home Screen quick action that opens the new-entry form. Info.plist values are looked up here by their English text.",
       "extractionState" : "manual",
@@ -9,6 +21,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nueva entrada"
+          }
+        }
+      }
+    },
+    "NSHumanReadableCopyright" : {
+      "comment" : "Copyright (human-readable)",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Copyright © 2026 Diego de Salas"
           }
         }
       }
