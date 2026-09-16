@@ -129,9 +129,10 @@ private struct UseCaseRow: View {
                     .foregroundStyle(.secondary)
                     .accessibilityLabel(Text("Always included"))
             } else {
-                Toggle("", isOn: $isOn)
+                // The title is the label; it's hidden only because the row
+                // already shows it, so VoiceOver still announces the switch.
+                Toggle(title, isOn: $isOn)
                     .labelsHidden()
-                    .accessibilityLabel(Text(title))
             }
         }
         .padding(14)

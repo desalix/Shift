@@ -1,0 +1,18 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "New Entry" : {
+      "comment" : "Title of the Home Screen quick action that opens the new-entry form. Info.plist values are looked up here by their English text.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nueva entrada"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
