@@ -20,6 +20,13 @@ final class Subject {
     @Relationship(deleteRule: .cascade, inverse: \Event.subject)
     var events: [Event]?
 
+    /// Presets that fill in this subject. Nothing reads it; it exists because
+    /// CloudKit mirroring rejects any relationship without an inverse, and
+    /// `Preset.subject` had none — which silently disabled sync. Nullify, so
+    /// deleting a subject leaves its presets in place, just unlinked.
+    @Relationship(deleteRule: .nullify, inverse: \Preset.subject)
+    var presets: [Preset]?
+
     init(id: UUID = UUID(), name: String = "", colorName: String? = nil) {
         self.id = id
         self.name = name

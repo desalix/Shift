@@ -5,6 +5,7 @@
 
 import SwiftUI
 import SwiftData
+import os
 
 @main
 struct ShiftApp: App {
@@ -39,17 +40,33 @@ struct ShiftApp: App {
     /// stored property has a default, every relationship is optional, and
     /// nothing is marked unique. Breaking any of those fails at container
     /// creation, not at compile time — hence the local fallback below.
+    private static let cloudKitContainer = "iCloud.com.desalas.ShiftApp"
+
     private static func makeContainer() -> ModelContainer {
         let schema = Schema([Event.self, Preset.self, Subject.self])
+
+        #if DEBUG && !targetEnvironment(simulator)
+        // Must run before the real container exists. See the type for why.
+        CloudKitSchemaInitializer.runIfNeeded(
+            containerIdentifier: cloudKitContainer,
+            types: [Event.self, Preset.self, Subject.self]
+        )
+        #endif
 
         let syncedConfiguration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false,
-            cloudKitDatabase: .private("iCloud.com.desalas.ShiftApp")
+            cloudKitDatabase: .private(cloudKitContainer)
         )
 
-        if let container = try? ModelContainer(for: schema, configurations: [syncedConfiguration]) {
-            return container
+        do {
+            return try ModelContainer(for: schema, configurations: [syncedConfiguration])
+        } catch {
+            // The fallback below keeps the app usable, which also makes this
+            // failure invisible. Log it, so a broken schema or entitlement shows
+            // up in the console instead of as sync that quietly never happens.
+            Logger(subsystem: "com.desalas.Shift", category: "sync")
+                .error("CloudKit sync unavailable, using a local store: \(String(reflecting: error), privacy: .public)")
         }
 
         // No iCloud account, sync disabled in Settings, or an entitlement that
