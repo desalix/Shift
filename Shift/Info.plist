@@ -6,7 +6,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>desalas.Shift</string>
+			<string>com.desalas.Shift</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>shift</string>
@@ -16,13 +16,17 @@
 	<key>UIApplicationShortcutItems</key>
 	<array>
 		<dict>
-			<key>UIApplicationShortcutItemType</key>
-			<string>desalas.Shift.new-entry</string>
-			<key>UIApplicationShortcutItemTitle</key>
-			<string>New Entry</string>
 			<key>UIApplicationShortcutItemIconType</key>
 			<string>UIApplicationShortcutIconTypeAdd</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>New Entry</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.desalas.Shift.new-entry</string>
 		</dict>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
 	</array>
 </dict>
 </plist>

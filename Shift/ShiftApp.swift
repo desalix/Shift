@@ -32,16 +32,29 @@ struct ShiftApp: App {
         .modelContainer(container)
     }
 
-    /// Builds the on-device store.
+    /// Builds the store, mirrored to the user's private CloudKit database so
+    /// their calendar follows them between devices.
     ///
-    /// Deliberately local-only: CloudKit sync needs the iCloud capability, which
-    /// a free personal Apple developer team cannot sign, so declaring it made
-    /// the app impossible to install on a real device. To restore cross-device
-    /// sync on a paid account, re-add the iCloud + Push capabilities and pass
-    /// `cloudKitDatabase: .private("iCloud.<bundle-id>")` here.
+    /// Mirroring imposes schema rules, which the models already satisfy: every
+    /// stored property has a default, every relationship is optional, and
+    /// nothing is marked unique. Breaking any of those fails at container
+    /// creation, not at compile time — hence the local fallback below.
     private static func makeContainer() -> ModelContainer {
         let schema = Schema([Event.self, Preset.self, Subject.self])
 
+        let syncedConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: false,
+            cloudKitDatabase: .private("iCloud.com.desalas.Shift")
+        )
+
+        if let container = try? ModelContainer(for: schema, configurations: [syncedConfiguration]) {
+            return container
+        }
+
+        // No iCloud account, sync disabled in Settings, or an entitlement that
+        // did not survive signing. The app is fully usable without sync, so fall
+        // back to a local store rather than refusing to launch.
         let localConfiguration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false,

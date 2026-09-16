@@ -20,7 +20,7 @@ final class AppErrorReporter {
     private(set) var message: String?
 
     @ObservationIgnored
-    private let logger = Logger(subsystem: "desalas.Shift", category: "persistence")
+    private let logger = Logger(subsystem: "com.desalas.Shift", category: "persistence")
 
     var isPresentingError: Bool {
         get { message != nil }

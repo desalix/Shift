@@ -61,5 +61,5 @@ final class SceneDelegate: NSObject, UIWindowSceneDelegate {
 
 /// Mirrors the `UIApplicationShortcutItems` entry in Info.plist.
 enum QuickAction {
-    static let newEntry = "desalas.Shift.new-entry"
+    static let newEntry = "com.desalas.Shift.new-entry"
 }
