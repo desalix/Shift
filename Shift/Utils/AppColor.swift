@@ -8,8 +8,8 @@ import SwiftUI
 /// The fixed palette used for accent, event types, and subjects.
 ///
 /// Colours are stored by name rather than as RGB so they adapt automatically to
-/// light and dark mode, stay in sync across devices as a short string, and can
-/// be named by the assistant ("make school green") without inventing hex codes.
+/// light and dark mode, and travel between devices as a short string rather than
+/// a component triple.
 enum AppColor: String, CaseIterable, Identifiable, Sendable {
     case blue, indigo, purple, pink, red, orange, yellow, green, teal, cyan, brown, gray
 

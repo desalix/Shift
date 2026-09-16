@@ -9,9 +9,9 @@ import Foundation
 /// of weekdays until an end date.
 ///
 /// Anything more elaborate — skip alternate weeks, skip public holidays — is
-/// deliberately *not* modelled here. The assistant handles those by working out
-/// the dates itself and proposing individual events, which keeps the stored
-/// model simple and keeps every occurrence independently editable.
+/// deliberately *not* modelled here. Those are entered as individual occurrences
+/// instead, which keeps the stored model simple and leaves every occurrence
+/// independently editable.
 enum Recurrence {
     /// The dates a weekly rule produces, as (start, end) pairs preserving the
     /// original time of day and duration.
