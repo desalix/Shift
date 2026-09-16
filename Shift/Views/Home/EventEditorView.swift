@@ -44,6 +44,8 @@ struct EventEditorView: View {
     @Query(sort: \Preset.name) private var presets: [Preset]
 
     @State private var draft = Draft()
+    @State private var quickAddText = ""
+    @State private var quickAddFailed = false
     @State private var didLoad = false
     @State private var showValidation = false
     @State private var newSubjectName = ""
@@ -53,6 +55,7 @@ struct EventEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if !mode.isEditing { quickAddSection }
                 typeSection
                 if !applicablePresets.isEmpty { presetSection }
                 detailsSection
@@ -96,6 +99,37 @@ struct EventEditorView: View {
     }
 
     // MARK: - Sections
+
+    /// Type the entry in one line instead of filling the form.
+    ///
+    /// It fills the fields below rather than saving anything, so whatever it
+    /// gets wrong is visible and correctable before it becomes an entry.
+    private var quickAddSection: some View {
+        Section {
+            HStack {
+                TextField("work thursday 9-17 at 12.50/h", text: $quickAddText)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .onSubmit(applyQuickAdd)
+
+                if !quickAddText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button(action: applyQuickAdd) {
+                        Image(systemName: "wand.and.stars")
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(Text("Fill the form"))
+                }
+            }
+        } header: {
+            Text("Quick add")
+        } footer: {
+            Text(quickAddFailed
+                 ? String(localized: "Couldn't find a time in that. Try something like \"thursday 9-17\".")
+                 : String(localized: "Type it in plain language and the form fills itself. Works offline."))
+                .foregroundStyle(quickAddFailed ? Color.orange : Color.secondary)
+        }
+    }
 
     private var typeSection: some View {
         Section {
@@ -394,6 +428,36 @@ struct EventEditorView: View {
         case .edit(let event):
             draft = Draft(event: event)
         }
+    }
+
+    private func applyQuickAdd() {
+        guard let parsed = QuickAddParser.parse(quickAddText, calendar: calendar) else {
+            quickAddFailed = true
+            return
+        }
+
+        quickAddFailed = false
+        draft.title = parsed.title
+        // Only adopt a type the user actually has switched on, so a stray
+        // "exam" cannot select School while School is disabled.
+        if settings.availableEventTypes.contains(parsed.type) {
+            draft.type = parsed.type
+        }
+        draft.startDate = parsed.startDate
+        draft.endDate = parsed.endDate
+
+        if draft.type == .work, let cents = parsed.hourlyRateCents {
+            draft.tracksPay = true
+            draft.compensationType = .hourly
+            draft.rateText = Money.editableString(cents: cents)
+        }
+
+        if let weekday = parsed.repeatsOnWeekday {
+            draft.isRecurring = true
+            draft.recurringWeekdays = [weekday]
+        }
+
+        quickAddText = ""
     }
 
     private func commitNewSubject() {

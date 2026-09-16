@@ -7,14 +7,13 @@ import SwiftUI
 
 /// The top-level destinations.
 enum AppTab: String, CaseIterable, Identifiable, Sendable {
-    case home, assistant, income, settings
+    case home, income, settings
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .home: String(localized: "Home")
-        case .assistant: String(localized: "Assistant")
         case .income: String(localized: "Income")
         case .settings: String(localized: "Settings")
         }
@@ -24,7 +23,6 @@ enum AppTab: String, CaseIterable, Identifiable, Sendable {
     var symbolName: String {
         switch self {
         case .home: "calendar"
-        case .assistant: "bubble.left.and.bubble.right"
         case .income: "eurosign.circle"
         case .settings: "gearshape"
         }

@@ -54,32 +54,6 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Which Claude model the assistant calls. The user supplies their own API key,
-/// so the choice — and its cost — is theirs.
-enum AssistantModel: String, CaseIterable, Identifiable, Sendable {
-    case opus = "claude-opus-5"
-    case sonnet = "claude-sonnet-5"
-    case haiku = "claude-haiku-4-5"
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .opus: "Claude Opus 5"
-        case .sonnet: "Claude Sonnet 5"
-        case .haiku: "Claude Haiku 4.5"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .opus: String(localized: "Most capable. Best at complex recurring schedules.")
-        case .sonnet: String(localized: "Balanced speed and capability.")
-        case .haiku: String(localized: "Fastest and cheapest. Best for simple edits.")
-        }
-    }
-}
-
 /// App-wide preferences, stored in `UserDefaults`.
 ///
 /// These used to mirror into `NSUbiquitousKeyValueStore` so they followed the
@@ -99,7 +73,6 @@ final class AppSettings {
         static let schoolEnabled = "settings.schoolEnabled"
         static let language = "settings.language"
         static let appearance = "settings.appearance"
-        static let assistantModel = "settings.assistantModel"
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
         static let tracksPayByDefault = "settings.tracksPayByDefault"
     }
@@ -113,7 +86,6 @@ final class AppSettings {
     var schoolEnabled: Bool { didSet { write(schoolEnabled, Key.schoolEnabled) } }
     var language: AppLanguage { didSet { applyLanguage() } }
     var appearance: AppearanceMode { didSet { write(appearance.rawValue, Key.appearance) } }
-    var assistantModel: AssistantModel { didSet { write(assistantModel.rawValue, Key.assistantModel) } }
     var hasCompletedOnboarding: Bool { didSet { write(hasCompletedOnboarding, Key.hasCompletedOnboarding) } }
     /// Seeds the editor's "Track pay" toggle for the next work entry. Hourly
     /// workers leave it on and never think about it; someone on a fixed wage
@@ -130,7 +102,6 @@ final class AppSettings {
         schoolEnabled = defaults.bool(forKey: Key.schoolEnabled)
         language = AppLanguage(rawValue: defaults.string(forKey: Key.language) ?? "") ?? .system
         appearance = AppearanceMode(rawValue: defaults.string(forKey: Key.appearance) ?? "") ?? .system
-        assistantModel = AssistantModel(rawValue: defaults.string(forKey: Key.assistantModel) ?? "") ?? .opus
         hasCompletedOnboarding = defaults.bool(forKey: Key.hasCompletedOnboarding)
         // `bool(forKey:)` can't tell "never set" from "false", and the useful
         // default here is on.

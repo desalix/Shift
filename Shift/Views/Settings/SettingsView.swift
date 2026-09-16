@@ -117,16 +117,6 @@ struct SettingsView: View {
                 Text("Most text changes immediately. A few system-provided strings update the next time you open Shift.")
             }
 
-            Section {
-                NavigationLink {
-                    AssistantSettingsView()
-                } label: {
-                    Label("AI Assistant", systemImage: "sparkles")
-                }
-            } footer: {
-                Text("Connect your own Anthropic API key to enable the Assistant.")
-            }
-
             Section("Data") {
                 LabeledContent {
                     Text("\(allEvents.count)")

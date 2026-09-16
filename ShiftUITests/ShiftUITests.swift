@@ -25,7 +25,7 @@ final class ShiftUITests: XCTestCase {
             getStarted.tap()
         }
 
-        for name in ["Home", "Assistant", "Income", "Settings"] {
+        for name in ["Home", "Income", "Settings"] {
             let tab = app.buttons[name]
             XCTAssertTrue(tab.waitForExistence(timeout: 10), "\(name) tab is missing")
             tab.tap()
@@ -58,12 +58,12 @@ final class ShiftUITests: XCTestCase {
         next.tap()
         previous.tap()
 
-        app.buttons["Assistant"].tap()
+        app.buttons["Settings"].tap()
         XCTAssertTrue(
-            app.staticTexts["Assistant"].waitForExistence(timeout: 5),
-            "Assistant did not appear"
+            app.staticTexts["Settings"].waitForExistence(timeout: 5),
+            "Settings did not appear"
         )
-        XCTAssertFalse(next.exists, "Assistant must not show a month stepper")
+        XCTAssertFalse(next.exists, "Settings must not show a month stepper")
 
         app.buttons["Income"].tap()
         XCTAssertTrue(next.waitForExistence(timeout: 5), "Income should have a month stepper")

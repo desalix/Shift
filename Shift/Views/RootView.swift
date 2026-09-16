@@ -63,8 +63,6 @@ struct RootView: View {
         switch tab {
         case .home:
             HomeView(displayedMonth: $displayedMonth)
-        case .assistant:
-            AssistantView()
         case .income:
             IncomeView(displayedMonth: $displayedMonth)
         case .settings:

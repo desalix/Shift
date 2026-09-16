@@ -386,189 +386,6 @@ struct CalendarMathTests {
     }
 }
 
-// MARK: - Assistant tool decoding
-
-struct AssistantToolsTests {
-    private let timeZone = TimeZone(identifier: "Europe/Madrid")!
-
-    @Test func decodesACreateEventsCall() throws {
-        let input: [String: Any] = [
-            "events": [
-                [
-                    "title": "Turno",
-                    "type": "work",
-                    "start": "2026-09-03T14:30:00",
-                    "end": "2026-09-03T19:00:00",
-                    "compensation_type": "hourly",
-                    "rate_cents": 1250,
-                ]
-            ]
-        ]
-        let actions = AssistantTools.actions(toolName: AssistantTools.createEvents, input: input, timeZone: timeZone)
-        #expect(actions.count == 1)
-
-        guard case .createEvent(let spec) = try #require(actions.first) else {
-            Issue.record("expected a createEvent action")
-            return
-        }
-        #expect(spec.title == "Turno")
-        #expect(spec.type == .work)
-        #expect(spec.hourlyRateCents == 1250)
-        #expect(spec.compensationType == .hourly)
-        #expect(spec.validationErrors(resolvedSubject: nil).isEmpty)
-    }
-
-    /// A repeating request arrives as many explicit entries, never as a rule.
-    @Test func decodesABatchOfOccurrences() {
-        let events = (3 ... 6).map { day in
-            [
-                "title": "Turno",
-                "type": "work",
-                "start": "2026-09-0\(day)T14:30:00",
-                "end": "2026-09-0\(day)T19:00:00",
-                "compensation_type": "hourly",
-                "rate_cents": 1250,
-            ] as [String: Any]
-        }
-        let actions = AssistantTools.actions(
-            toolName: AssistantTools.createEvents,
-            input: ["events": events],
-            timeZone: timeZone
-        )
-        #expect(actions.count == 4)
-    }
-
-    /// Malformed model output must degrade to "nothing proposed", never to a
-    /// corrupt entry.
-    @Test func dropsMalformedEvents() {
-        let input: [String: Any] = [
-            "events": [
-                ["title": "No dates", "type": "work"],
-                ["title": "Bad type", "type": "nonsense", "start": "2026-09-03T14:30:00", "end": "2026-09-03T19:00:00"],
-                ["title": "Inverted", "type": "work", "start": "2026-09-03T19:00:00", "end": "2026-09-03T14:30:00"],
-                ["title": "Unparseable", "type": "work", "start": "next Tuesday", "end": "later"],
-            ]
-        ]
-        let actions = AssistantTools.actions(toolName: AssistantTools.createEvents, input: input, timeZone: timeZone)
-        #expect(actions.isEmpty)
-    }
-
-    @Test func decodesDeletionAndRescheduling() {
-        let id = UUID()
-        let delete = AssistantTools.actions(
-            toolName: AssistantTools.deleteEvent,
-            input: ["id": id.uuidString],
-            timeZone: timeZone
-        )
-        #expect(delete.count == 1)
-        #expect(delete.first?.isDestructive == true)
-
-        let move = AssistantTools.actions(
-            toolName: AssistantTools.rescheduleEvent,
-            input: ["id": id.uuidString, "start": "2026-09-05T10:00:00", "end": "2026-09-05T14:00:00"],
-            timeZone: timeZone
-        )
-        #expect(move.count == 1)
-        #expect(move.first?.isDestructive == true)
-    }
-
-    @Test func rejectsAnUnparseableIdentifier() {
-        #expect(AssistantTools.actions(toolName: AssistantTools.deleteEvent, input: ["id": "not-a-uuid"], timeZone: timeZone).isEmpty)
-        #expect(AssistantTools.actions(toolName: AssistantTools.deleteEvent, input: [:], timeZone: timeZone).isEmpty)
-    }
-
-    @Test func createEventsAreNotDestructive() {
-        let actions = AssistantTools.actions(
-            toolName: AssistantTools.createEvents,
-            input: ["events": [["title": "X", "type": "calendar", "start": "2026-09-03T14:30:00", "end": "2026-09-03T19:00:00"]]],
-            timeZone: timeZone
-        )
-        #expect(actions.first?.isDestructive == false)
-    }
-
-    @Test func ignoresUnknownTools() {
-        #expect(AssistantTools.actions(toolName: "drop_database", input: [:], timeZone: timeZone).isEmpty)
-    }
-
-    @Test func systemPromptCarriesTheGroundingFacts() {
-        let context = AssistantContext(
-            today: Date(timeIntervalSinceReferenceDate: 0),
-            timeZoneIdentifier: "Europe/Madrid",
-            localeIdentifier: "es_ES",
-            schoolEnabled: false,
-            subjectNames: ["Cálculo"],
-            presetNames: ["Partido Real Madrid"],
-            upcomingEvents: []
-        )
-        let prompt = AssistantTools.systemPrompt(context: context)
-        #expect(prompt.contains("Europe/Madrid"))
-        #expect(prompt.contains("disabled"))
-        #expect(prompt.contains("Cálculo"))
-        #expect(prompt.contains("Partido Real Madrid"))
-    }
-}
-
-// MARK: - Offline assistant
-
-@MainActor
-struct MockAIProviderTests {
-    private func context() -> AssistantContext {
-        AssistantContext(
-            today: Date(),
-            timeZoneIdentifier: TimeZone.current.identifier,
-            localeIdentifier: "en_GB",
-            schoolEnabled: false,
-            subjectNames: [],
-            presetNames: [],
-            upcomingEvents: []
-        )
-    }
-
-    @Test func proposesAShiftFromPlainLanguage() async throws {
-        let reply = try await MockAIProvider().respond(
-            to: [AssistantMessage(role: .user, text: "Add a shift Thursday 14:30-19:00 at 12.50/h")],
-            context: context()
-        )
-        let proposal = try #require(reply.proposal)
-        #expect(proposal.actions.count == 1)
-
-        guard case .createEvent(let spec) = proposal.actions[0] else {
-            Issue.record("expected a createEvent action")
-            return
-        }
-        #expect(spec.hourlyRateCents == 1250)
-        #expect(spec.type == .work)
-    }
-
-    @Test func expandsARepeatingRequest() async throws {
-        let reply = try await MockAIProvider().respond(
-            to: [AssistantMessage(role: .user, text: "every monday 9-17")],
-            context: context()
-        )
-        let proposal = try #require(reply.proposal)
-        #expect(proposal.actions.count == 4)
-        #expect(!proposal.containsDestructive)
-    }
-
-    @Test func offersHelpWhenItCannotParse() async throws {
-        let reply = try await MockAIProvider().respond(
-            to: [AssistantMessage(role: .user, text: "hello there")],
-            context: context()
-        )
-        #expect(reply.proposal == nil)
-        #expect(!reply.text.isEmpty)
-    }
-
-    /// Demo mode must not silently pretend it deleted something.
-    @Test func declinesDeletionsWithoutAKey() async throws {
-        let reply = try await MockAIProvider().respond(
-            to: [AssistantMessage(role: .user, text: "delete my thursday shift")],
-            context: context()
-        )
-        #expect(reply.proposal == nil)
-    }
-}
-
 // MARK: - Recurrence series operations
 
 import SwiftData
@@ -906,44 +723,82 @@ struct MonthIncomeSummaryTests {
     }
 }
 
-// MARK: - Assistant, pay optional
+// MARK: - Quick add parsing
 
-@MainActor
-struct AssistantUntrackedPayTests {
-    private let timeZone = TimeZone(identifier: "Europe/Madrid")!
-
-    private func spec(from raw: [String: Any]) throws -> EventSpec {
-        let actions = AssistantTools.actions(
-            toolName: AssistantTools.createEvents,
-            input: ["events": [raw]],
-            timeZone: timeZone
-        )
-        guard case .createEvent(let spec) = try #require(actions.first) else {
-            Issue.record("expected a createEvent action")
-            throw CancellationError()
-        }
-        return spec
+struct QuickAddParserTests {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Madrid")!
+        calendar.locale = Locale(identifier: "en_GB")
+        return calendar
     }
 
-    /// The model omitting a rate now means "pay isn't tracked" rather than
-    /// producing a rate-less hourly shift that fails validation.
-    @Test func workWithoutARateIsUntrackedPay() throws {
-        let spec = try spec(from: [
-            "title": "Turno", "type": "work",
-            "start": "2026-09-03T14:30:00", "end": "2026-09-03T19:00:00",
-        ])
-        #expect(spec.compensationType == nil)
-        #expect(spec.hourlyRateCents == nil)
-        #expect(spec.validationErrors(resolvedSubject: nil).isEmpty)
+    /// A Wednesday, so "thursday" resolves to the next day and the maths is
+    /// checkable by hand.
+    private var now: Date {
+        DateComponents(
+            calendar: calendar, timeZone: TimeZone(identifier: "Europe/Madrid"),
+            year: 2026, month: 9, day: 16, hour: 10
+        ).date!
     }
 
-    @Test func aBareRateIsTakenAsHourly() throws {
-        let spec = try spec(from: [
-            "title": "Turno", "type": "work", "rate_cents": 1250,
-            "start": "2026-09-03T14:30:00", "end": "2026-09-03T19:00:00",
-        ])
-        #expect(spec.compensationType == .hourly)
-        #expect(spec.hourlyRateCents == 1250)
-        #expect(spec.validationErrors(resolvedSubject: nil).isEmpty)
+    private func parse(_ text: String) -> QuickAddParser.Result? {
+        QuickAddParser.parse(text, calendar: calendar, timeZone: TimeZone(identifier: "Europe/Madrid")!, now: now)
+    }
+
+    @Test func readsAShiftWithAWeekdayAndRate() throws {
+        let result = try #require(parse("work thursday 9-17 at 12.50/h"))
+        #expect(result.type == .work)
+        #expect(result.hourlyRateCents == 1250)
+        #expect(calendar.component(.weekday, from: result.startDate) == 5)
+        #expect(calendar.component(.hour, from: result.startDate) == 9)
+        #expect(calendar.component(.hour, from: result.endDate) == 17)
+    }
+
+    @Test func readsSpanish() throws {
+        let result = try #require(parse("turno jueves de 9 a 17 a 12,50 €/hora"))
+        #expect(result.type == .work)
+        #expect(result.hourlyRateCents == 1250)
+        #expect(calendar.component(.weekday, from: result.startDate) == 5)
+    }
+
+    /// No rate and no work word is an ordinary calendar entry, not a shift.
+    @Test func withoutARateItIsACalendarEntry() throws {
+        let result = try #require(parse("dentist tomorrow 10:30-11:00"))
+        #expect(result.type == .calendar)
+        #expect(result.hourlyRateCents == nil)
+        #expect(calendar.component(.day, from: result.startDate) == 17)
+        #expect(calendar.component(.minute, from: result.startDate) == 30)
+    }
+
+    @Test func recognisesARepeatingRequest() throws {
+        let result = try #require(parse("every monday 9-17"))
+        #expect(result.repeatsOnWeekday == 2)
+    }
+
+    @Test func aOneOffDoesNotRepeat() throws {
+        #expect(try #require(parse("monday 9-17")).repeatsOnWeekday == nil)
+    }
+
+    /// An end before the start means the shift crosses midnight.
+    @Test func handlesAnOvernightShift() throws {
+        let result = try #require(parse("work 22-06"))
+        #expect(result.endDate > result.startDate)
+        #expect(result.endDate.timeIntervalSince(result.startDate) == 8 * 3600)
+    }
+
+    /// Without a time there is nothing to anchor an entry on, so the form is
+    /// left alone rather than being filled with an invented time.
+    @Test func returnsNothingWithoutATimeRange() {
+        #expect(parse("add a shift sometime next week") == nil)
+        #expect(parse("") == nil)
+    }
+
+    @Test func titleFallsBackWhenOnlySchedulingWordsRemain() throws {
+        #expect(try #require(parse("thursday 9-17")).title == "Event")
+    }
+
+    @Test func keepsTheNameItWasGiven() throws {
+        #expect(try #require(parse("dentist tomorrow 10-11")).title == "Dentist")
     }
 }
