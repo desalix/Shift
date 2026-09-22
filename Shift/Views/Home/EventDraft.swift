@@ -132,6 +132,27 @@ extension EventEditorView {
             }
         }
 
+        /// The problems that would stop this draft saving. Pay is only checked
+        /// when it will be recorded, matching `write(into:)`: a work entry with
+        /// Track pay off needs no rate.
+        func validationErrors(subject: Subject?) -> [Event.ValidationError] {
+            let recordsPay = type == .work && tracksPay
+            return Event.validate(
+                title: title,
+                type: type,
+                startDate: startDate,
+                endDate: endDate,
+                compensationType: recordsPay ? compensationType : nil,
+                hourlyRateCents: recordsPay && compensationType == .hourly
+                    ? Money.cents(from: rateText) : nil,
+                fixedRateCents: recordsPay && compensationType == .fixed
+                    ? Money.cents(from: rateText) : nil,
+                schoolKind: type == .school ? schoolKind : nil,
+                subject: type == .school ? subject : nil,
+                notes: notes.isEmpty ? nil : notes
+            )
+        }
+
         /// Copies the draft onto a model object. Fields that don't apply to the
         /// selected type are explicitly nilled rather than left stale.
         func write(into event: Event, subject: Subject?, preset: Preset?) {

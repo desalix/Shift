@@ -164,7 +164,11 @@ struct ColorPickerRow: View {
                 Text(title)
             } icon: {
                 Image(systemName: systemImage)
+                    .foregroundStyle(selection.color)
             }
         }
+        // A menu picker draws its selected value in the tint, so the colour's
+        // name appears in that colour.
+        .tint(selection.color)
     }
 }

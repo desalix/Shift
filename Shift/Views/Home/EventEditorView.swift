@@ -328,20 +328,7 @@ struct EventEditorView: View {
     }
 
     private var validationErrors: [Event.ValidationError] {
-        Event.validate(
-            title: draft.title,
-            type: draft.type,
-            startDate: draft.startDate,
-            endDate: draft.endDate,
-            compensationType: draft.type == .work ? draft.compensationType : nil,
-            hourlyRateCents: draft.type == .work && draft.compensationType == .hourly
-                ? Money.cents(from: draft.rateText) : nil,
-            fixedRateCents: draft.type == .work && draft.compensationType == .fixed
-                ? Money.cents(from: draft.rateText) : nil,
-            schoolKind: draft.type == .school ? draft.schoolKind : nil,
-            subject: draft.type == .school ? selectedSubject : nil,
-            notes: draft.notes.isEmpty ? nil : draft.notes
-        )
+        draft.validationErrors(subject: selectedSubject)
     }
 
     private var durationText: String {

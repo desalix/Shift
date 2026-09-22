@@ -877,3 +877,62 @@ struct PresetTimingTests {
         #expect(draft.endDate == date(24, 15))
     }
 }
+
+// MARK: - Draft validation
+
+@MainActor
+struct DraftValidationTests {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Madrid")!
+        return calendar
+    }
+
+    private func workDraft(tracksPay: Bool) -> EventEditorView.Draft {
+        let start = DateComponents(calendar: calendar, timeZone: calendar.timeZone,
+                                   year: 2026, month: 9, day: 24, hour: 9).date!
+        var draft = EventEditorView.Draft(initialDate: start, calendar: calendar, defaultType: .work, tracksPay: tracksPay)
+        draft.title = "Shift"
+        return draft
+    }
+
+    /// With Track pay off no pay is saved, so no rate is asked for.
+    @Test func trackPayOffNeedsNoRate() {
+        let draft = workDraft(tracksPay: false)
+        #expect(draft.rateText.isEmpty)
+        #expect(draft.validationErrors(subject: nil).isEmpty)
+    }
+
+    @Test func trackPayOnNeedsARate() {
+        let draft = workDraft(tracksPay: true)
+        #expect(draft.validationErrors(subject: nil) == [.missingRate])
+    }
+
+    @Test func anUnpaidPresetEntryCanBeSaved() {
+        var draft = workDraft(tracksPay: true)
+        draft.apply(preset: Preset(name: "Salaried", type: .work, title: "Office"), calendar: calendar)
+        #expect(draft.validationErrors(subject: nil).isEmpty)
+    }
+}
+
+// MARK: - App language
+
+struct AppLanguageTests {
+    /// Choosing a language in the app changes only the language: the device's
+    /// region, and so its 24-hour clock, is kept.
+    @Test func aChosenLanguageKeepsTheDeviceRegionAndClock() throws {
+        for language in [AppLanguage.english, .spanish] {
+            let locale = try #require(language.locale)
+            #expect(locale.language.languageCode?.identifier == language.rawValue)
+            #expect(locale.region == Locale.current.region)
+            #expect(locale.hourCycle == Locale.current.hourCycle)
+        }
+    }
+
+    @Test func englishInSpainUsesA24HourClock() {
+        var components = Locale.Components(locale: Locale(identifier: "es_ES"))
+        components.languageComponents = Locale.Language.Components(languageCode: "en")
+        let locale = Locale(components: components)
+        #expect(locale.hourCycle == .zeroToTwentyThree)
+    }
+}

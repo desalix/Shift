@@ -45,12 +45,14 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// The device's locale with only the language swapped. A bare
+    /// `Locale(identifier: "en")` would drop the region too, and with it the
+    /// user's 24-hour clock, first weekday and number formats.
     var locale: Locale? {
-        switch self {
-        case .system: nil
-        case .english: Locale(identifier: "en")
-        case .spanish: Locale(identifier: "es")
-        }
+        guard self != .system else { return nil }
+        var components = Locale.Components(locale: .current)
+        components.languageComponents = Locale.Language.Components(languageCode: Locale.LanguageCode(rawValue))
+        return Locale(components: components)
     }
 }
 
@@ -147,8 +149,8 @@ final class AppSettings {
         // `String(localized:)` reads the bundle's preferred localisation, which is
         // only re-evaluated at launch. Writing AppleLanguages makes the two agree
         // from the next launch onward; Settings tells the user as much.
-        if let code = language.locale?.identifier {
-            defaults.set([code], forKey: "AppleLanguages")
+        if language != .system {
+            defaults.set([language.rawValue], forKey: "AppleLanguages")
         } else {
             defaults.removeObject(forKey: "AppleLanguages")
         }
