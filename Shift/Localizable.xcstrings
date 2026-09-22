@@ -803,6 +803,17 @@
         }
       }
     },
+    "Ends next day" : {
+      "comment" : "Footer when a preset's end time is at or before its start.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina al día siguiente"
+          }
+        }
+      }
+    },
     "Enter a rate." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1625,6 +1636,17 @@
         }
       }
     },
+    "Schedule" : {
+      "comment" : "Preset timing option: fixed start and end times.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Horario"
+          }
+        }
+      }
+    },
     "School" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2129,6 +2151,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "^[%lld cambio](inflect: true)"
+          }
+        }
+      }
+    },
+    "hours" : {
+      "comment" : "Label beside the hours column of the duration wheel.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "horas"
+          }
+        }
+      }
+    },
+    "min" : {
+      "comment" : "Label beside the minutes column of the duration wheel.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "min"
           }
         }
       }

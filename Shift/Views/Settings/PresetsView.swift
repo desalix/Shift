@@ -94,20 +94,26 @@ struct PresetEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppErrorReporter.self) private var errorReporter
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.calendar) private var calendar
     @Environment(AppSettings.self) private var settings
     @Query(sort: \Subject.name) private var subjects: [Subject]
+
+    private enum TimingMode: Hashable { case schedule, length }
 
     @State private var name = ""
     @State private var type: EventType = .work
     @State private var title = ""
+    @State private var timingMode: TimingMode = .schedule
+    @State private var scheduleStart = PresetEditorView.today(atMinute: 9 * 60)
+    @State private var scheduleEnd = PresetEditorView.today(atMinute: 17 * 60)
+    @State private var durationMinutes = 8 * 60
+    @State private var tracksPay = true
     @State private var compensationType: CompensationType = .hourly
     @State private var rateText = ""
     @State private var schoolKind: SchoolEventKind = .exam
     @State private var subjectID: UUID?
-    @State private var address = ""
     @State private var notes = ""
     @State private var colorName: String?
-    @State private var durationMinutes = 60
     @State private var didLoad = false
 
     var body: some View {
@@ -125,35 +131,20 @@ struct PresetEditorView: View {
                     .pickerStyle(.segmented)
                 }
 
-                Section("Defaults") {
+                Section("Title") {
                     TextField("Default title", text: $title)
                         .textInputAutocapitalization(.sentences)
-
-                    Stepper(value: $durationMinutes, in: 15 ... 1440, step: 15) {
-                        LabeledContent(String(localized: "Length"), value: durationText)
-                    }
                 }
 
-                if type == .work {
-                    Section("Pay") {
-                        Picker("Rate type", selection: $compensationType) {
-                            Text("Hourly").tag(CompensationType.hourly)
-                            Text("Fixed").tag(CompensationType.fixed)
-                        }
-                        .pickerStyle(.segmented)
+                timingSection
 
-                        HStack {
-                            Text(compensationType == .hourly
-                                 ? String(localized: "Hourly rate")
-                                 : String(localized: "Fixed amount"))
-                            Spacer()
-                            TextField("0.00", text: $rateText)
-                                .keyboardType(.decimalPad)
-                                .multilineTextAlignment(.trailing)
-                                .frame(maxWidth: 120)
-                            Text(Money.currencySymbol).foregroundStyle(.secondary)
-                        }
-                    }
+                if type == .work {
+                    PayFields(
+                        tracksPay: $tracksPay,
+                        compensationType: $compensationType,
+                        rateText: $rateText,
+                        durationMinutes: timingMinutes
+                    )
                 }
 
                 if type == .school {
@@ -171,13 +162,6 @@ struct PresetEditorView: View {
                                 Text(subject.name).tag(UUID?.some(subject.id))
                             }
                         }
-                    }
-                }
-
-                if type != .school {
-                    Section("Address") {
-                        TextField("Optional address", text: $address, axis: .vertical)
-                            .lineLimit(1 ... 3)
                     }
                 }
 
@@ -209,19 +193,69 @@ struct PresetEditorView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
                         .fontWeight(.semibold)
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(!canSave)
                 }
             }
             .onAppear(perform: loadIfNeeded)
         }
     }
 
-    private var durationText: String {
-        let hours = durationMinutes / 60
-        let minutes = durationMinutes % 60
-        if hours > 0 && minutes > 0 { return String(localized: "\(hours)h \(minutes)m") }
-        if hours > 0 { return String(localized: "\(hours)h") }
-        return String(localized: "\(minutes)m")
+    // MARK: - Timing
+
+    /// Either fixed times of day or just a length, switched the same way as
+    /// Hourly and Fixed pay.
+    private var timingSection: some View {
+        Section {
+            Picker("When", selection: $timingMode) {
+                Text("Schedule").tag(TimingMode.schedule)
+                Text("Length").tag(TimingMode.length)
+            }
+            .pickerStyle(.segmented)
+
+            switch timingMode {
+            case .schedule:
+                DatePicker("Starts", selection: $scheduleStart, displayedComponents: .hourAndMinute)
+                DatePicker("Ends", selection: $scheduleEnd, displayedComponents: .hourAndMinute)
+            case .length:
+                DurationWheel(minutes: $durationMinutes)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 180)
+            }
+        } header: {
+            Text("When")
+        } footer: {
+            if timingMode == .schedule, endsNextDay {
+                Text("Ends next day")
+            } else if timingMode == .schedule {
+                Text(PresetTiming.durationText(minutes: timingMinutes))
+            }
+        }
+    }
+
+    private var startMinute: Int { minuteOfDay(scheduleStart) }
+    private var endMinute: Int { minuteOfDay(scheduleEnd) }
+    private var endsNextDay: Bool { endMinute <= startMinute }
+
+    /// The length the chosen timing gives a shift, for the footer and the
+    /// estimated earnings.
+    private var timingMinutes: Int {
+        switch timingMode {
+        case .schedule: endsNextDay ? endMinute + 1440 - startMinute : endMinute - startMinute
+        case .length: durationMinutes
+        }
+    }
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+            && !(timingMode == .length && durationMinutes == 0)
+    }
+
+    private func minuteOfDay(_ date: Date) -> Int {
+        calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
+    }
+
+    private static func today(atMinute minute: Int) -> Date {
+        PresetTiming.time(minute, on: Calendar.current.startOfDay(for: Date()), calendar: .current)
     }
 
     private func typeName(_ type: EventType) -> String {
@@ -232,24 +266,47 @@ struct PresetEditorView: View {
         }
     }
 
+    // MARK: - Load and save
+
     private func loadIfNeeded() {
-        guard !didLoad, let preset else { didLoad = true; return }
+        guard !didLoad else { return }
         didLoad = true
+
+        guard let preset else {
+            // A new preset starts from whatever the last work entry or preset
+            // chose, the same default the entry editor uses.
+            tracksPay = settings.tracksPayByDefault
+            return
+        }
+
         name = preset.name
         type = preset.type
         title = preset.title ?? ""
+
+        switch preset.timing {
+        case .schedule(let start, let end):
+            timingMode = .schedule
+            scheduleStart = Self.today(atMinute: start)
+            scheduleEnd = Self.today(atMinute: end)
+        case .length(let minutes):
+            timingMode = .length
+            durationMinutes = minutes
+        case nil:
+            break
+        }
+
+        tracksPay = preset.compensationType != nil
         compensationType = preset.compensationType ?? .hourly
         switch preset.compensationType {
         case .hourly: rateText = preset.hourlyRateCents.map { Money.editableString(cents: $0) } ?? ""
         case .fixed: rateText = preset.fixedRateCents.map { Money.editableString(cents: $0) } ?? ""
         case nil: rateText = ""
         }
+
         schoolKind = preset.schoolKind ?? .exam
         subjectID = preset.subject?.id
-        address = preset.address ?? ""
         notes = preset.notes ?? ""
         colorName = preset.colorName
-        durationMinutes = preset.defaultDurationMinutes ?? 60
     }
 
     private func save() {
@@ -258,14 +315,21 @@ struct PresetEditorView: View {
         target.type = type
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         target.title = trimmedTitle.isEmpty ? nil : trimmedTitle
-        target.defaultDurationMinutes = durationMinutes
         target.colorName = colorName
         target.notes = notes.isEmpty ? nil : notes
 
-        let trimmedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        target.address = (type != .school && !trimmedAddress.isEmpty) ? trimmedAddress : nil
+        switch timingMode {
+        case .schedule:
+            target.defaultStartMinute = startMinute
+            target.defaultEndMinute = endMinute
+            target.defaultDurationMinutes = nil
+        case .length:
+            target.defaultStartMinute = nil
+            target.defaultEndMinute = nil
+            target.defaultDurationMinutes = durationMinutes
+        }
 
-        if type == .work {
+        if type == .work, tracksPay {
             target.compensationType = compensationType
             let cents = Money.cents(from: rateText)
             target.hourlyRateCents = compensationType == .hourly ? cents : nil
@@ -285,7 +349,11 @@ struct PresetEditorView: View {
         }
 
         if preset == nil { modelContext.insert(target) }
-        modelContext.saveChanges(reporting: errorReporter)
+        guard modelContext.saveChanges(reporting: errorReporter) else { return }
+
+        // One memory for both editors: the next work entry or preset starts
+        // from whatever was chosen here.
+        if type == .work { settings.tracksPayByDefault = tracksPay }
         dismiss()
     }
 }

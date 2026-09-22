@@ -17,7 +17,6 @@ extension EventEditorView {
         var title: String = ""
         var startDate: Date = Date()
         var endDate: Date = Date().addingTimeInterval(3600)
-        var address: String = ""
 
         /// Whether this shift records money at all. Off means the entry is a
         /// record of time — the fixed-monthly-wage case.
@@ -68,7 +67,6 @@ extension EventEditorView {
             title = event.title
             startDate = event.startDate
             endDate = event.endDate
-            address = event.address ?? ""
             // A stored compensation type is the record of pay being tracked.
             tracksPay = event.compensationType != nil
             compensationType = event.compensationType ?? .hourly
@@ -94,12 +92,7 @@ extension EventEditorView {
         /// under Work can't leak onto a Calendar entry.
         mutating func applyTypeDefaults(_ newType: EventType) {
             presetID = nil
-            switch newType {
-            case .work:
-                break
-            case .school:
-                address = ""
-            case .calendar:
+            if newType == .calendar {
                 rateText = ""
             }
         }
@@ -107,19 +100,21 @@ extension EventEditorView {
         mutating func apply(preset: Preset, calendar: Calendar) {
             type = preset.type
             if let presetTitle = preset.title, !presetTitle.isEmpty { title = presetTitle }
-            if let presetAddress = preset.address { address = presetAddress }
             if let presetNotes = preset.notes { notes = String(presetNotes.prefix(Event.notesCharacterLimit)) }
             if let color = preset.colorName { colorName = color }
 
-            if preset.type == .work, let compensation = preset.compensationType {
-                // A preset carrying a rate is a statement that this shift is paid.
-                tracksPay = true
-                compensationType = compensation
-                switch compensation {
-                case .hourly:
-                    if let cents = preset.hourlyRateCents { rateText = Money.editableString(cents: cents) }
-                case .fixed:
-                    if let cents = preset.fixedRateCents { rateText = Money.editableString(cents: cents) }
+            if preset.type == .work {
+                // A work preset states whether its shift is paid: saved with pay
+                // it switches Track pay on, saved without it switches it off.
+                tracksPay = preset.compensationType != nil
+                if let compensation = preset.compensationType {
+                    compensationType = compensation
+                    switch compensation {
+                    case .hourly:
+                        if let cents = preset.hourlyRateCents { rateText = Money.editableString(cents: cents) }
+                    case .fixed:
+                        if let cents = preset.fixedRateCents { rateText = Money.editableString(cents: cents) }
+                    }
                 }
             }
 
@@ -128,8 +123,12 @@ extension EventEditorView {
                 if let subject = preset.subject { subjectID = subject.id }
             }
 
-            if let minutes = preset.defaultDurationMinutes, minutes > 0 {
-                endDate = startDate.addingTimeInterval(TimeInterval(minutes * 60))
+            if let timing = preset.timing {
+                // A schedule pins the times on the day already chosen; a length
+                // keeps the chosen start.
+                let dates = timing.dates(onDayOf: startDate, currentStart: startDate, calendar: calendar)
+                startDate = dates.start
+                endDate = dates.end
             }
         }
 
@@ -144,8 +143,8 @@ extension EventEditorView {
             event.notes = notes.isEmpty ? nil : notes
             event.preset = preset
 
-            let trimmedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
-            event.address = (type != .school && !trimmedAddress.isEmpty) ? trimmedAddress : nil
+            // `address` is left alone: the field was removed in 1.1, and an
+            // address saved in 1.0 should survive an edit rather than vanish.
 
             if type == .work, tracksPay {
                 event.compensationType = compensationType

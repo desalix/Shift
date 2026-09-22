@@ -21,7 +21,7 @@ import os
 enum CloudKitSchemaInitializer {
     /// Bump whenever the models change, so the next debug run on a device
     /// re-declares the schema before it is deployed to Production again.
-    private static let schemaVersion = 1
+    private static let schemaVersion = 2
     private static let defaultsKey = "debug.cloudKitSchemaInitializedVersion"
 
     static func runIfNeeded(containerIdentifier: String, types: [any PersistentModel.Type]) {

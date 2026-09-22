@@ -802,3 +802,78 @@ struct QuickAddParserTests {
         #expect(try #require(parse("dentist tomorrow 10-11")).title == "Dentist")
     }
 }
+
+// MARK: - Preset timing and pay
+
+@MainActor
+struct PresetTimingTests {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Madrid")!
+        return calendar
+    }
+
+    private func date(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+        DateComponents(calendar: calendar, timeZone: calendar.timeZone,
+                       year: 2026, month: 9, day: day, hour: hour, minute: minute).date!
+    }
+
+    @Test func aSchedulePinsTheTimesOnTheChosenDay() {
+        let dates = PresetTiming.schedule(start: 9 * 60, end: 15 * 60)
+            .dates(onDayOf: date(24, 17, 30), currentStart: date(24, 17, 30), calendar: calendar)
+        #expect(dates.start == date(24, 9))
+        #expect(dates.end == date(24, 15))
+    }
+
+    /// An end at or before the start means the shift runs past midnight.
+    @Test func anOvernightScheduleEndsTheNextDay() {
+        let dates = PresetTiming.schedule(start: 22 * 60, end: 6 * 60)
+            .dates(onDayOf: date(24, 10), currentStart: date(24, 10), calendar: calendar)
+        #expect(dates.start == date(24, 22))
+        #expect(dates.end == date(25, 6))
+    }
+
+    @Test func aLengthKeepsTheChosenStart() {
+        let dates = PresetTiming.length(minutes: 7 * 60 + 45)
+            .dates(onDayOf: date(24, 14, 30), currentStart: date(24, 14, 30), calendar: calendar)
+        #expect(dates.start == date(24, 14, 30))
+        #expect(dates.end == date(24, 22, 15))
+    }
+
+    @Test func fixedTimesWinOverALength() {
+        let preset = Preset(name: "Morning", defaultDurationMinutes: 60)
+        preset.defaultStartMinute = 9 * 60
+        preset.defaultEndMinute = 15 * 60
+        #expect(preset.timing == .schedule(start: 540, end: 900))
+
+        preset.defaultStartMinute = nil
+        #expect(preset.timing == .length(minutes: 60))
+
+        preset.defaultDurationMinutes = 0
+        #expect(preset.timing == nil)
+    }
+
+    /// A work preset saved without pay switches Track pay off when applied, and
+    /// one saved with pay switches it on.
+    @Test func applyingAWorkPresetFollowsItsPay() {
+        let unpaid = Preset(name: "Salaried", type: .work)
+        var draft = EventEditorView.Draft(initialDate: date(24, 9), calendar: calendar, defaultType: .work, tracksPay: true)
+        draft.apply(preset: unpaid, calendar: calendar)
+        #expect(draft.tracksPay == false)
+
+        let paid = Preset(name: "Café", type: .work, compensationType: .hourly, hourlyRateCents: 1250)
+        draft.apply(preset: paid, calendar: calendar)
+        #expect(draft.tracksPay == true)
+        #expect(draft.rateText == Money.editableString(cents: 1250))
+    }
+
+    @Test func applyingAScheduledPresetSetsTheEntryTimes() {
+        let preset = Preset(name: "Morning", type: .work)
+        preset.defaultStartMinute = 9 * 60
+        preset.defaultEndMinute = 15 * 60
+        var draft = EventEditorView.Draft(initialDate: date(24, 12), calendar: calendar, defaultType: .work)
+        draft.apply(preset: preset, calendar: calendar)
+        #expect(draft.startDate == date(24, 9))
+        #expect(draft.endDate == date(24, 15))
+    }
+}

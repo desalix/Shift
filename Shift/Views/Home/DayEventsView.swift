@@ -243,7 +243,7 @@ struct EventRow: View {
         case .school:
             event.subject?.name
         case .calendar:
-            event.address
+            nil
         }
     }
 }

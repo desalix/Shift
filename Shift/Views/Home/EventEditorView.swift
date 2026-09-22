@@ -60,11 +60,17 @@ struct EventEditorView: View {
                 if !applicablePresets.isEmpty { presetSection }
                 detailsSection
                 timingSection
-                if draft.type == .work { paySection }
+                if draft.type == .work {
+                    PayFields(
+                        tracksPay: $draft.tracksPay,
+                        compensationType: $draft.compensationType,
+                        rateText: $draft.rateText,
+                        durationMinutes: max(0, Int(draft.endDate.timeIntervalSince(draft.startDate) / 60))
+                    )
+                }
                 if draft.type == .school { schoolSection }
-                if draft.type != .school { addressSection }
-                recurrenceSection
                 appearanceSection
+                recurrenceSection
                 notesSection
                 if showValidation && !validationErrors.isEmpty { errorSection }
             }
@@ -202,50 +208,6 @@ struct EventEditorView: View {
         }
     }
 
-    @ViewBuilder
-    private var paySection: some View {
-        Section {
-            Toggle("Track pay", isOn: $draft.tracksPay)
-
-            if draft.tracksPay {
-            Picker("Rate type", selection: $draft.compensationType) {
-                Text("Hourly").tag(CompensationType.hourly)
-                Text("Fixed").tag(CompensationType.fixed)
-            }
-            .pickerStyle(.segmented)
-
-            HStack {
-                Text(draft.compensationType == .hourly
-                     ? String(localized: "Hourly rate")
-                     : String(localized: "Fixed amount"))
-                Spacer()
-                TextField("0.00", text: $draft.rateText)
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-                    .frame(maxWidth: 120)
-                Text(Money.currencySymbol).foregroundStyle(.secondary)
-            }
-
-            if draft.compensationType == .hourly, let cents = Money.cents(from: draft.rateText), cents > 0 {
-                HStack {
-                    Text("Estimated earnings").foregroundStyle(.secondary)
-                    Spacer()
-                    Text(Money.string(cents: estimatedEarnings(hourlyCents: cents), locale: locale))
-                        .fontWeight(.medium)
-                        .monospacedDigit()
-                }
-                .font(.footnote)
-            }
-            }
-        } header: {
-            Text("Pay")
-        } footer: {
-            if !draft.tracksPay {
-                Text("This shift records time only. It still appears in Income, without an amount.")
-            }
-        }
-    }
-
     private var schoolSection: some View {
         Section("School") {
             Picker("Kind", selection: $draft.schoolKind) {
@@ -280,14 +242,6 @@ struct EventEditorView: View {
                     Label("Quick Add Subject", systemImage: "plus.circle")
                 }
             }
-        }
-    }
-
-    private var addressSection: some View {
-        Section("Address") {
-            TextField("Optional address", text: $draft.address, axis: .vertical)
-                .lineLimit(1 ... 3)
-                .textInputAutocapitalization(.words)
         }
     }
 
@@ -399,10 +353,6 @@ struct EventEditorView: View {
         return String(localized: "\(remainder)m")
     }
 
-    private func estimatedEarnings(hourlyCents: Int) -> Int {
-        let minutes = max(0, Int(draft.endDate.timeIntervalSince(draft.startDate) / 60))
-        return Int((Double(minutes * hourlyCents) / 60.0).rounded())
-    }
 
     private func typeName(_ type: EventType) -> String {
         switch type {
