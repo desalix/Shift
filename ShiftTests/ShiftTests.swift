@@ -380,6 +380,18 @@ struct CalendarMathTests {
                 == CalendarMath.monthIndex(of: date(2026, 12, 31), calendar: calendar) + 1)
     }
 
+    /// The pager keeps the page on screen and three either side built, and
+    /// never builds past the ends of what it can reach.
+    @Test func pagerWindowKeepsThreePagesEachSide() {
+        #expect(PagerWindow.pages(around: 50, buffer: 3, in: 0 ..< 100) == [47, 48, 49, 50, 51, 52, 53])
+        // Settling one page on drops the far page and adds the next beyond.
+        #expect(PagerWindow.pages(around: 51, buffer: 3, in: 0 ..< 100) == [48, 49, 50, 51, 52, 53, 54])
+        #expect(PagerWindow.pages(around: 1, buffer: 3, in: 0 ..< 100) == [0, 1, 2, 3, 4])
+        #expect(PagerWindow.pages(around: 99, buffer: 3, in: 0 ..< 100) == [96, 97, 98, 99])
+        // Days are counted either side of the tapped one, so the range crosses zero.
+        #expect(PagerWindow.pages(around: 0, buffer: 3, in: -10 ..< 11) == [-3, -2, -1, 0, 1, 2, 3])
+    }
+
     @Test func steppingWrapsTheYear() {
         let december = CalendarMath.month(byAdding: 1, to: date(2026, 11, 15), calendar: calendar)
         #expect(calendar.component(.month, from: december) == 12)
@@ -587,85 +599,122 @@ struct MonthExporterTests {
         calendar.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: min))!
     }
 
-    private func work(_ title: String, _ start: Date, hours: Int = 2, rate: Int = 1000) -> Event {
+    private func work(_ title: String, _ start: Date, hours: Int = 2, rate: Int? = 1000) -> Event {
         Event(title: title, type: .work, startDate: start,
               endDate: start.addingTimeInterval(TimeInterval(hours * 3600)),
-              compensationType: .hourly, hourlyRateCents: rate)
+              compensationType: rate == nil ? nil : .hourly, hourlyRateCents: rate)
     }
 
-    @Test func groupsByStartMonthAndOrdersChronologically() {
+    /// Work only, oldest first, each in the month it starts in.
+    @Test func rowsAreWorkEntriesInDateOrder() {
         let events = [
             work("Late", date(2026, 8, 20)),
             work("Early", date(2026, 8, 3)),
             // Starts on 31 July, ends in August: belongs to July, like Income.
             work("Overnight", date(2026, 7, 31, 22), hours: 5),
             work("Elsewhere", date(2026, 9, 1)),
+            Event(title: "Dentist", type: .calendar, startDate: date(2026, 8, 12), endDate: date(2026, 8, 12, 10)),
+            Event(title: "", type: .school, startDate: date(2026, 8, 10), endDate: date(2026, 8, 10, 11),
+                  schoolKind: .exam, subject: Subject(name: "Calculus")),
         ]
-        let document = MonthExporter.makeDocument(
-            events: events, months: [date(2026, 8, 15), date(2026, 7, 1)], calendar: calendar
-        )
-        #expect(document.months.map(\.month) == ["2026-07", "2026-08"])
-        #expect(document.months[0].entries.map(\.title) == ["Overnight"])
-        #expect(document.months[1].entries.map(\.title) == ["Early", "Late"])
+        let rows = MonthExporter.rows(events: events, months: [date(2026, 8, 15), date(2026, 7, 1)], calendar: calendar)
+        #expect(rows.map(\.name) == ["Overnight", "Early", "Late"])
     }
 
-    @Test func carriesEarnings() {
-        let shift = work("Shift", date(2026, 8, 11), hours: 3, rate: 1250)
-        let entries = MonthExporter.makeDocument(events: [shift], months: [date(2026, 8, 1)], calendar: calendar)
-            .months[0].entries
+    @Test func rowsCarryLengthAndIncome() {
+        let paid = work("Café", date(2026, 8, 11), hours: 3, rate: 1250)
+        let unpaid = work("Office", date(2026, 8, 12), hours: 8, rate: nil)
+        let fixed = Event(title: "Event", type: .work, startDate: date(2026, 8, 13), endDate: date(2026, 8, 13, 13),
+                          compensationType: .fixed, fixedRateCents: 9000)
 
-        #expect(entries[0].earningsCents == 3750)
-        #expect(entries[0].durationMinutes == 180)
+        let rows = MonthExporter.rows(events: [paid, unpaid, fixed], months: [date(2026, 8, 1)], calendar: calendar)
+        #expect(rows.map(\.minutes) == [180, 480, 240])
+        // Untracked pay is a blank cell, not €0.
+        #expect(rows.map(\.earningsCents) == [3750, nil, 9000])
+        #expect(rows[1].cells.last == .empty)
     }
 
-    /// The export is a record of work: school and calendar entries stay out of
-    /// the file, and a month with only those isn't offered at all.
-    @Test func exportsOnlyWorkEntries() {
-        let subject = Subject(name: "Calculus")
-        let exam = Event(title: "", type: .school, startDate: date(2026, 8, 10),
-                         endDate: date(2026, 8, 10, 11), schoolKind: .exam, subject: subject)
-        let dentist = Event(title: "Dentist", type: .calendar, startDate: date(2026, 8, 12),
-                            endDate: date(2026, 8, 12, 10))
-        let onlyPersonal = Event(title: "Holiday", type: .calendar, startDate: date(2026, 9, 3),
-                                 endDate: date(2026, 9, 3, 10))
-        let shift = work("Shift", date(2026, 8, 11))
-        let events = [exam, dentist, onlyPersonal, shift]
-
-        let document = MonthExporter.makeDocument(events: events, months: [date(2026, 8, 1)], calendar: calendar)
-        #expect(document.months[0].entries.map(\.title) == ["Shift"])
-        #expect(document.months[0].entries.allSatisfy { $0.type == "work" })
-
-        let months = MonthExporter.availableMonths(for: events, calendar: calendar)
-        #expect(months.map { MonthExporter.monthKey(for: $0.start, calendar: calendar) } == ["2026-08"])
-        #expect(months.map(\.entryCount) == [1])
+    /// Spreadsheet dates count days from 30 December 1899, with the time as
+    /// the fraction — using Madrid's wall clock, not UTC.
+    @Test func spreadsheetDatesUseTheLocalWallClock() {
+        let serial = SpreadsheetWriter.serialDay(date(2026, 9, 24, 9, 30), calendar: calendar)
+        #expect(serial == 46289 + 9.5 / 24)
+        // A well-known anchor: Excel and Numbers show 36526 as 1 January 2000.
+        #expect(SpreadsheetWriter.serialDay(date(2000, 1, 1, 0, 0), calendar: calendar) == 36526)
     }
 
-    @Test func roundTripsThroughJSON() throws {
-        let document = MonthExporter.makeDocument(
-            events: [work("Shift", date(2026, 8, 3))],
-            months: [date(2026, 8, 1)],
-            calendar: calendar,
-            now: date(2026, 9, 1, 12)
-        )
-        let data = try MonthExporter.encode(document, timeZone: calendar.timeZone)
-        let json = try #require(String(data: data, encoding: .utf8))
-        // Times keep the local offset rather than being flattened to UTC.
-        #expect(json.contains("+02:00"))
-        #expect(try MonthExporter.decode(data) == document)
+    /// The standard CRC-32 check value, so zip entries carry the checksum
+    /// every unzipper verifies.
+    @Test func zipChecksumsAreStandardCRC32() {
+        #expect(ZipArchive.crc32(Data("123456789".utf8)) == 0xCBF4_3926)
+    }
+
+    /// An `.xlsx` is a zip of the workbook parts; the sheet holds the header
+    /// and one row per shift, with text escaped for XML.
+    @Test func spreadsheetIsAWorkbook() throws {
+        let rows = MonthExporter.rows(events: [work("Bar & Grill <late>", date(2026, 8, 3, 18), hours: 6, rate: 1200)],
+                                      months: [date(2026, 8, 1)], calendar: calendar)
+        let data = MonthExporter.spreadsheet(header: ["Date", "Name", "Start", "End", "Total time", "Income"],
+                                             rows: rows, calendar: calendar)
+
+        #expect(data.prefix(4) == Data([0x50, 0x4B, 0x03, 0x04]))
+        let entries = storedEntries(in: data)
+        #expect(entries.map(\.name) == [
+            "[Content_Types].xml", "_rels/.rels", "xl/workbook.xml",
+            "xl/_rels/workbook.xml.rels", "xl/styles.xml", "xl/worksheets/sheet1.xml",
+        ])
+        for entry in entries {
+            #expect(ZipArchive.crc32(entry.data) == entry.crc, "Bad checksum for \(entry.name)")
+        }
+
+        let sheet = try #require(entries.last.map { String(decoding: $0.data, as: UTF8.self) })
+        #expect(sheet.contains(#"<c r="A1" t="inlineStr" s="1"><is><t xml:space="preserve">Date</t></is></c>"#))
+        #expect(sheet.contains(#"<c r="F1" t="inlineStr" s="1"><is><t xml:space="preserve">Income</t></is></c>"#))
+        #expect(sheet.contains("Bar &amp; Grill &lt;late&gt;"))
+        #expect(sheet.contains(#"<c r="C2" s="3"><v>0.75</v></c>"#))       // 18:00
+        #expect(sheet.contains(#"<c r="E2" s="4"><v>0.25</v></c>"#))       // 6 hours
+        #expect(sheet.contains(#"<c r="F2" s="5"><v>72.0</v></c>"#))       // €72.00
+        #expect(!sheet.contains(#"r="A3""#))
     }
 
     @Test func fileNamesDescribeTheRange() {
-        #expect(MonthExporter.fileName(for: [date(2026, 8, 9)], calendar: calendar) == "Shift-2026-08.json")
+        #expect(MonthExporter.fileName(for: [date(2026, 8, 9)], calendar: calendar) == "Shift-2026-08.xlsx")
         #expect(MonthExporter.fileName(for: [date(2026, 8, 1), date(2026, 6, 1), date(2026, 7, 1)], calendar: calendar)
-                == "Shift-2026-06_to_2026-08.json")
-        #expect(MonthExporter.fileName(for: [], calendar: calendar) == "Shift.json")
+                == "Shift-2026-06_to_2026-08.xlsx")
+        #expect(MonthExporter.fileName(for: [], calendar: calendar) == "Shift.xlsx")
     }
 
     @Test func availableMonthsAreNewestFirstWithCounts() {
-        let events = [work("A", date(2026, 6, 2)), work("B", date(2026, 8, 2)), work("C", date(2026, 8, 5))]
+        let events = [work("A", date(2026, 6, 2)), work("B", date(2026, 8, 2)), work("C", date(2026, 8, 5)),
+                      Event(title: "Holiday", type: .calendar, startDate: date(2026, 9, 3), endDate: date(2026, 9, 3, 10))]
         let months = MonthExporter.availableMonths(for: events, calendar: calendar)
         #expect(months.map { MonthExporter.monthKey(for: $0.start, calendar: calendar) } == ["2026-08", "2026-06"])
         #expect(months.map(\.entryCount) == [2, 1])
+    }
+
+    /// Reads back a stored (uncompressed) zip: each local header's name, CRC
+    /// and data.
+    private func storedEntries(in data: Data) -> [(name: String, crc: UInt32, data: Data)] {
+        let bytes = [UInt8](data)
+        func uint16(_ at: Int) -> Int { Int(bytes[at]) | Int(bytes[at + 1]) << 8 }
+        func uint32(_ at: Int) -> UInt32 {
+            UInt32(bytes[at]) | UInt32(bytes[at + 1]) << 8 | UInt32(bytes[at + 2]) << 16 | UInt32(bytes[at + 3]) << 24
+        }
+
+        var entries: [(name: String, crc: UInt32, data: Data)] = []
+        var offset = 0
+        while offset + 30 <= bytes.count, uint32(offset) == 0x0403_4B50 {
+            let crc = uint32(offset + 14)
+            let size = Int(uint32(offset + 18))
+            let nameLength = uint16(offset + 26)
+            let extraLength = uint16(offset + 28)
+            let nameStart = offset + 30
+            let dataStart = nameStart + nameLength + extraLength
+            let name = String(decoding: bytes[nameStart ..< nameStart + nameLength], as: UTF8.self)
+            entries.append((name, crc, Data(bytes[dataStart ..< dataStart + size])))
+            offset = dataStart + size
+        }
+        return entries
     }
 }
 

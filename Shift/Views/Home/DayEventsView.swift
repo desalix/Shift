@@ -35,6 +35,7 @@ struct DayEventsView: View {
                 DayEventsList(day: day(at: pageOffset)) { type in
                     editorMode = .create(initialDate: day(at: pageOffset), type: type)
                 }
+                .equatable()
             }
             .navigationTitle(day(at: offset).formatted(.dateTime.weekday(.wide).day().month(.wide)))
             .navigationBarTitleDisplayMode(.inline)
@@ -67,9 +68,15 @@ struct DayEventsView: View {
 /// One day's entries. Horizontal drags turn the day, so deleting is in each
 /// row's long-press menu rather than a swipe action — and in the entry's
 /// detail screen, as before.
-private struct DayEventsList: View {
+private struct DayEventsList: View, Equatable {
     let day: Date
     let add: (EventType?) -> Void
+
+    /// By day only: `add` is rebuilt with every parent pass but always does
+    /// the same thing for the same day.
+    static func == (lhs: DayEventsList, rhs: DayEventsList) -> Bool {
+        lhs.day == rhs.day
+    }
 
     @Environment(\.modelContext) private var modelContext
     @Environment(AppErrorReporter.self) private var errorReporter

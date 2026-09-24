@@ -568,12 +568,12 @@
         }
       }
     },
-    "Choose one or more months. Only work entries are exported, grouped by the month they start in." : {
+    "Choose one or more months. Their work entries are exported as a spreadsheet, in date order." : {
       "localizations" : {
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Elige uno o varios meses. Solo se exportan las entradas de trabajo, agrupadas por el mes en que empiezan."
+            "value" : "Elige uno o varios meses. Sus entradas de trabajo se exportan como hoja de cálculo, por orden de fecha."
           }
         }
       }
@@ -629,6 +629,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Oscuro"
+          }
+        }
+      }
+    },
+    "Date" : {
+      "comment" : "Export spreadsheet column: the day of the shift.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fecha"
           }
         }
       }
@@ -817,6 +828,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Editar plantilla"
+          }
+        }
+      }
+    },
+    "End" : {
+      "comment" : "Export spreadsheet column: end time.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fin"
           }
         }
       }
@@ -1741,6 +1763,17 @@
         }
       }
     },
+    "Start" : {
+      "comment" : "Export spreadsheet column: start time.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicio"
+          }
+        }
+      }
+    },
     "Starts" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1924,6 +1957,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "El título es obligatorio."
+          }
+        }
+      }
+    },
+    "Total time" : {
+      "comment" : "Export spreadsheet column: the shift's length.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tiempo total"
           }
         }
       }

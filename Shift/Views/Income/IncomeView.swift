@@ -19,7 +19,7 @@ struct IncomeView: View {
     var body: some View {
         // Months side by side, like Home: drag to pull the next one in.
         MonthPager(month: $displayedMonth) { month in
-            MonthIncome(month: month)
+            MonthIncome(month: month).equatable()
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -34,8 +34,14 @@ struct IncomeView: View {
     }
 }
 
-private struct MonthIncome: View {
+/// Equatable by month, like the Home grid: a page redraws for its own data,
+/// not whenever the screen around it does.
+private struct MonthIncome: View, Equatable {
     let month: Date
+
+    static func == (lhs: MonthIncome, rhs: MonthIncome) -> Bool {
+        lhs.month == rhs.month
+    }
 
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale

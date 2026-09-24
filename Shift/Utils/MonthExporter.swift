@@ -5,48 +5,48 @@
 
 import Foundation
 
-/// Builds the JSON export for one or more months.
+/// Builds the spreadsheet export for one or more months.
 ///
 /// Only work entries are exported: the file is a record of shifts and pay,
 /// not a copy of the calendar. Entries belong to the month they *start* in,
 /// the same rule the Income tab uses, so an export and the paycheck it came
 /// from always agree.
-///
-/// Version 2 is work-only; version 1 also carried school and calendar entries,
-/// with their `schoolKind` and `subject`.
 enum MonthExporter {
-    // The export's value types are nonisolated so the share sheet can encode
-    // them off the main actor, only when a file is actually requested.
-    nonisolated struct Document: Codable, Equatable {
-        var app: String
-        var version: Int
-        var exportedAt: Date
-        var currency: String
-        var timeZone: String
-        var months: [Month]
-    }
-
-    nonisolated struct Month: Codable, Equatable {
-        /// `yyyy-MM`.
-        var month: String
-        var entries: [Entry]
-    }
-
-    nonisolated struct Entry: Codable, Equatable {
-        var id: UUID
-        var title: String
-        var type: String
+    /// One line of the sheet: Date, Name, Start, End, Total time, Income.
+    nonisolated struct Row: Equatable {
+        var name: String
         var start: Date
         var end: Date
-        var durationMinutes: Int
-        var earningsCents: Int
-        var address: String?
-        var compensationType: String?
-        var hourlyRateCents: Int?
-        var fixedRateCents: Int?
-        var notes: String?
-        var isRecurring: Bool
-        var recurrenceId: UUID?
+        var minutes: Int
+        /// Nil when the shift doesn't track pay — an empty cell, as the app
+        /// shows a dash rather than €0.
+        var earningsCents: Int?
+
+        var cells: [SpreadsheetWriter.Cell] {
+            [
+                .date(start),
+                .text(name),
+                .time(start),
+                .time(end),
+                .duration(minutes: minutes),
+                earningsCents.map { .euros(cents: $0) } ?? .empty,
+            ]
+        }
+    }
+
+    /// Wide enough for a date, a typical shift name, and the numbers.
+    nonisolated static let columnWidths: [Double] = [12, 28, 8, 8, 11, 11]
+
+    /// The header row, in the app's language.
+    static var header: [String] {
+        [
+            String(localized: "Date", comment: "Export spreadsheet column: the day of the shift."),
+            String(localized: "Name", comment: "Export spreadsheet column: the shift's title."),
+            String(localized: "Start", comment: "Export spreadsheet column: start time."),
+            String(localized: "End", comment: "Export spreadsheet column: end time."),
+            String(localized: "Total time", comment: "Export spreadsheet column: the shift's length."),
+            String(localized: "Income", comment: "Export spreadsheet column: what the shift earned."),
+        ]
     }
 
     struct AvailableMonth: Equatable {
@@ -66,68 +66,41 @@ enum MonthExporter {
             .sorted { $0.start > $1.start }
     }
 
-    /// The export for the given months, oldest first, each month's entries in
-    /// start order. Months are identified by any date inside them.
-    static func makeDocument(
-        events: [Event],
-        months: [Date],
-        calendar: Calendar,
-        now: Date = .now
-    ) -> Document {
-        let starts = Set(months.map { CalendarMath.startOfMonth(for: $0, calendar: calendar) }).sorted()
+    /// The work entries of the given months, oldest first. Months are
+    /// identified by any date inside them.
+    static func rows(events: [Event], months: [Date], calendar: Calendar) -> [Row] {
+        let starts = Set(months.map { CalendarMath.startOfMonth(for: $0, calendar: calendar) })
 
-        let exportedMonths = starts.map { start in
-            let end = CalendarMath.startOfNextMonth(for: start, calendar: calendar)
-            let entries = events
-                .filter { $0.type == .work && $0.startDate >= start && $0.startDate < end }
-                .sorted { $0.startDate < $1.startDate }
-                // A closure, not `.map(entry(from:))`: an unapplied method
-                // reference drops the main-actor isolation the models need.
-                .map { entry(from: $0) }
-            return Month(month: monthKey(for: start, calendar: calendar), entries: entries)
-        }
+        return events
+            .filter { event in
+                event.type == .work
+                    && starts.contains(CalendarMath.startOfMonth(for: event.startDate, calendar: calendar))
+            }
+            .sorted { $0.startDate < $1.startDate }
+            // A closure, not `.map(row(from:))`: an unapplied method reference
+            // drops the main-actor isolation the models need.
+            .map { row(from: $0) }
+    }
 
-        return Document(
-            app: "Shift",
-            version: 2,
-            exportedAt: now,
-            currency: Money.currencyCode,
-            timeZone: calendar.timeZone.identifier,
-            months: exportedMonths
+    /// The finished `.xlsx`.
+    nonisolated static func spreadsheet(header: [String], rows: [Row], calendar: Calendar) -> Data {
+        SpreadsheetWriter.workbook(
+            header: header,
+            rows: rows.map(\.cells),
+            columnWidths: columnWidths,
+            calendar: calendar
         )
     }
 
-    /// Pretty, key-sorted JSON with ISO-8601 dates carrying the export's UTC
-    /// offset, so times read the way they appear in the app.
-    nonisolated static func encode(_ document: Document, timeZone: TimeZone) throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        encoder.dateEncodingStrategy = .custom { date, encoder in
-            var container = encoder.singleValueContainer()
-            // Pin the offset separator: the default is `.omitted`, which renders
-            // "+0200" and changed behaviour between OS versions. "+02:00" is the
-            // form readers expect, so state it rather than inherit it.
-            let style = Date.ISO8601FormatStyle(timeZone: timeZone).timeZoneSeparator(.colon)
-            try container.encode(date.formatted(style))
-        }
-        return try encoder.encode(document)
-    }
-
-    static func decode(_ data: Data) throws -> Document {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(Document.self, from: data)
-    }
-
-    /// `Shift-2026-08.json` for one month, `Shift-2026-06_to_2026-08.json` for a
+    /// `Shift-2026-08.xlsx` for one month, `Shift-2026-06_to_2026-08.xlsx` for a
     /// range.
     static func fileName(for months: [Date], calendar: Calendar) -> String {
         let keys = Set(months.map { CalendarMath.startOfMonth(for: $0, calendar: calendar) })
             .sorted()
             .map { monthKey(for: $0, calendar: calendar) }
 
-        guard let first = keys.first, let last = keys.last else { return "Shift.json" }
-        return first == last ? "Shift-\(first).json" : "Shift-\(first)_to_\(last).json"
+        guard let first = keys.first, let last = keys.last else { return "Shift.xlsx" }
+        return first == last ? "Shift-\(first).xlsx" : "Shift-\(first)_to_\(last).xlsx"
     }
 
     static func monthKey(for date: Date, calendar: Calendar) -> String {
@@ -135,23 +108,14 @@ enum MonthExporter {
         return String(format: "%04d-%02d", components.year ?? 0, components.month ?? 0)
     }
 
-    private static func entry(from event: Event) -> Entry {
-        Entry(
-            id: event.id,
-            // `displayTitle`, so an untitled shift exports as "Untitled", not "".
-            title: event.displayTitle,
-            type: event.type.rawValue,
+    private static func row(from event: Event) -> Row {
+        Row(
+            // `displayTitle`, so an untitled shift reads "Untitled", not blank.
+            name: event.displayTitle,
             start: event.startDate,
             end: event.endDate,
-            durationMinutes: event.durationInMinutes,
-            earningsCents: event.earningsInCents,
-            address: event.address,
-            compensationType: event.compensationType?.rawValue,
-            hourlyRateCents: event.hourlyRateCents,
-            fixedRateCents: event.fixedRateCents,
-            notes: event.notes,
-            isRecurring: event.isRecurring,
-            recurrenceId: event.recurrenceID
+            minutes: event.durationInMinutes,
+            earningsCents: event.compensationType == nil ? nil : event.earningsInCents
         )
     }
 }

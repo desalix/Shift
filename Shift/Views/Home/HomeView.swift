@@ -18,7 +18,7 @@ struct HomeView: View {
     var body: some View {
         // One grid per page, each with its own `@Query` over its month.
         MonthPager(month: $displayedMonth) { month in
-            MonthGrid(month: month)
+            MonthGrid(month: month).equatable()
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -55,8 +55,15 @@ struct HomeView: View {
     }
 }
 
-private struct MonthGrid: View {
+/// Equatable by month, so a page redraws only for its own data, settings or
+/// locale — not every time the screen around it does, which during paging
+/// meant rebuilding all seven built grids.
+private struct MonthGrid: View, Equatable {
     let month: Date
+
+    static func == (lhs: MonthGrid, rhs: MonthGrid) -> Bool {
+        lhs.month == rhs.month
+    }
 
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale

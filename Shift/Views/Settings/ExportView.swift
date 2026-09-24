@@ -8,7 +8,7 @@ import SwiftData
 import CoreTransferable
 import UniformTypeIdentifiers
 
-/// Pick one or more months and share their work entries as a JSON file.
+/// Pick one or more months and share their work entries as a spreadsheet.
 struct ExportView: View {
     @Query(
         filter: #Predicate<Event> { $0.typeRaw == "work" },
@@ -58,7 +58,7 @@ struct ExportView: View {
                         .accessibilityAddTraits(selectedMonths.contains(month.start) ? .isSelected : [])
                     }
                 } footer: {
-                    Text("Choose one or more months. Only work entries are exported, grouped by the month they start in.")
+                    Text("Choose one or more months. Their work entries are exported as a spreadsheet, in date order.")
                 }
             }
         }
@@ -96,35 +96,42 @@ struct ExportView: View {
         }
     }
 
-    /// The document is gathered on the main actor, where the model objects
-    /// live; encoding waits until the share sheet asks for the file.
+    /// The rows are gathered on the main actor, where the model objects live;
+    /// the spreadsheet is written only when the share sheet asks for the file.
     private var exportFile: MonthExportFile {
         let months = Array(selectedMonths)
         return MonthExportFile(
-            document: MonthExporter.makeDocument(events: events, months: months, calendar: calendar),
-            timeZone: calendar.timeZone,
+            header: MonthExporter.header,
+            rows: MonthExporter.rows(events: events, months: months, calendar: calendar),
+            calendar: calendar,
             fileName: MonthExporter.fileName(for: months, calendar: calendar)
         )
     }
 }
 
-/// The JSON handed to the share sheet, written to a temporary file so the
-/// recipient sees a real file name rather than a generic "data".
+/// The spreadsheet handed to the share sheet, written to a temporary file so
+/// the recipient sees a real file name rather than a generic "data".
 ///
-/// Encoding happens here, not in the view body, so it runs once per share
-/// rather than on every redraw — and a failure fails the share instead of
-/// handing over an empty file.
+/// Written here, not in the view body, so it happens once per share rather
+/// than on every redraw.
 nonisolated struct MonthExportFile: Transferable {
-    let document: MonthExporter.Document
-    let timeZone: TimeZone
+    let header: [String]
+    let rows: [MonthExporter.Row]
+    let calendar: Calendar
     let fileName: String
 
     static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(exportedContentType: .json) { file in
-            let data = try MonthExporter.encode(file.document, timeZone: file.timeZone)
+        FileRepresentation(exportedContentType: .xlsx) { file in
+            let data = MonthExporter.spreadsheet(header: file.header, rows: file.rows, calendar: file.calendar)
             let url = URL.temporaryDirectory.appending(path: file.fileName)
             try data.write(to: url, options: .atomic)
             return SentTransferredFile(url)
         }
     }
+}
+
+extension UTType {
+    /// Excel's `.xlsx`. Declared by the system; the fallback only guards the
+    /// lookup, since the constant needs a value.
+    nonisolated static let xlsx = UTType("org.openxmlformats.spreadsheetml.sheet") ?? .data
 }
