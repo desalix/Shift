@@ -66,6 +66,24 @@ enum CalendarMath {
         return Array(symbols[offset...] + symbols[..<offset])
     }
 
+    // MARK: - Month paging
+
+    /// The months the pager can reach, as indexes counted from January 1900:
+    /// 1900 through 2099. Only the pages on screen are ever built.
+    static let pageableMonths = 0 ..< 200 * 12
+
+    /// The page index of the month containing `date`.
+    static func monthIndex(of date: Date, calendar: Calendar) -> Int {
+        let components = calendar.dateComponents([.year, .month], from: date)
+        let index = ((components.year ?? 2000) - 1900) * 12 + (components.month ?? 1) - 1
+        return min(max(index, pageableMonths.lowerBound), pageableMonths.upperBound - 1)
+    }
+
+    /// Midnight on the first day of the month at page `index`.
+    static func month(atIndex index: Int, calendar: Calendar) -> Date {
+        calendar.date(from: DateComponents(year: 1900 + index / 12, month: index % 12 + 1, day: 1)) ?? Date()
+    }
+
     /// Half-open day bounds, suitable for a SwiftData predicate.
     static func dayBounds(for date: Date, calendar: Calendar) -> (start: Date, end: Date) {
         let start = calendar.startOfDay(for: date)

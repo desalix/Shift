@@ -6,16 +6,19 @@
 import SwiftUI
 
 /// Previous / month name / next, for the navigation bar of month-scoped tabs.
+///
+/// It only reports the step: the screen owns the month and the slide
+/// direction, so the arrows and a swipe turn the page the same way.
 struct MonthStepper: View {
-    @Binding var displayedMonth: Date
+    let displayedMonth: Date
+    let step: (Int) -> Void
 
-    @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
 
     var body: some View {
         HStack(spacing: 2) {
             Button {
-                step(by: -1)
+                step(-1)
             } label: {
                 Image(systemName: "chevron.left")
             }
@@ -27,9 +30,10 @@ struct MonthStepper: View {
                 .lineLimit(1)
                 .frame(minWidth: 150)
                 .contentTransition(.numericText())
+                .accessibilityIdentifier("month-title")
 
             Button {
-                step(by: 1)
+                step(1)
             } label: {
                 Image(systemName: "chevron.right")
             }
@@ -39,11 +43,5 @@ struct MonthStepper: View {
 
     private var monthTitle: String {
         displayedMonth.formatted(.dateTime.month(.wide).year().locale(locale)).localizedCapitalized
-    }
-
-    private func step(by value: Int) {
-        withAnimation(.snappy(duration: 0.2)) {
-            displayedMonth = CalendarMath.month(byAdding: value, to: displayedMonth, calendar: calendar)
-        }
     }
 }

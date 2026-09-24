@@ -44,8 +44,6 @@ struct EventEditorView: View {
     @Query(sort: \Preset.name) private var presets: [Preset]
 
     @State private var draft = Draft()
-    @State private var quickAddText = ""
-    @State private var quickAddFailed = false
     @State private var didLoad = false
     @State private var showValidation = false
     @State private var newSubjectName = ""
@@ -55,21 +53,22 @@ struct EventEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if !mode.isEditing { quickAddSection }
+                // No section headers: every field already says what it is,
+                // through its placeholder or its own label.
                 typeSection
                 if !applicablePresets.isEmpty { presetSection }
-                detailsSection
-                timingSection
+                titleAndTimeSection
+                appearanceSection
                 if draft.type == .work {
                     PayFields(
                         tracksPay: $draft.tracksPay,
                         compensationType: $draft.compensationType,
                         rateText: $draft.rateText,
-                        durationMinutes: max(0, Int(draft.endDate.timeIntervalSince(draft.startDate) / 60))
+                        durationMinutes: max(0, Int(draft.endDate.timeIntervalSince(draft.startDate) / 60)),
+                        showsHeader: false
                     )
                 }
                 if draft.type == .school { schoolSection }
-                appearanceSection
                 recurrenceSection
                 notesSection
                 if showValidation && !validationErrors.isEmpty { errorSection }
@@ -106,37 +105,6 @@ struct EventEditorView: View {
 
     // MARK: - Sections
 
-    /// Type the entry in one line instead of filling the form.
-    ///
-    /// It fills the fields below rather than saving anything, so whatever it
-    /// gets wrong is visible and correctable before it becomes an entry.
-    private var quickAddSection: some View {
-        Section {
-            HStack {
-                TextField("work thursday 9-17 at 12.50/h", text: $quickAddText)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.done)
-                    .onSubmit(applyQuickAdd)
-
-                if !quickAddText.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Button(action: applyQuickAdd) {
-                        Image(systemName: "wand.and.stars")
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel(Text("Fill the form"))
-                }
-            }
-        } header: {
-            Text("Quick add")
-        } footer: {
-            Text(quickAddFailed
-                 ? String(localized: "Couldn't find a time in that. Try something like \"thursday 9-17\".")
-                 : String(localized: "Type it in plain language and the form fills itself. Works offline."))
-                .foregroundStyle(quickAddFailed ? Color.orange : Color.secondary)
-        }
-    }
-
     private var typeSection: some View {
         Section {
             Picker("Type", selection: $draft.type) {
@@ -152,7 +120,7 @@ struct EventEditorView: View {
     }
 
     private var presetSection: some View {
-        Section("Preset") {
+        Section {
             Picker("Preset", selection: $draft.presetID) {
                 Text("None").tag(UUID?.none)
                 ForEach(applicablePresets) { preset in
@@ -166,26 +134,22 @@ struct EventEditorView: View {
 
             if let presetID = draft.presetID,
                let preset = presets.first(where: { $0.id == presetID }) {
-                Text(preset.summary)
+                Text(preset.summary(locale: locale))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
     }
 
-    @ViewBuilder
-    private var detailsSection: some View {
-        // An exam is titled by its subject, so there is nothing to type here.
-        if !(draft.type == .school && draft.schoolKind == .exam) {
-            Section("Title") {
+    /// What and when, as one block: title, start, end, duration.
+    private var titleAndTimeSection: some View {
+        Section {
+            // An exam is titled by its subject, so there is nothing to type here.
+            if !(draft.type == .school && draft.schoolKind == .exam) {
                 TextField("Title", text: $draft.title)
                     .textInputAutocapitalization(.sentences)
             }
-        }
-    }
 
-    private var timingSection: some View {
-        Section("When") {
             DatePicker("Starts", selection: $draft.startDate)
                 .onChange(of: draft.startDate) { oldValue, newValue in
                     // Drag the end along with the start so the duration the user
@@ -209,7 +173,7 @@ struct EventEditorView: View {
     }
 
     private var schoolSection: some View {
-        Section("School") {
+        Section {
             Picker("Kind", selection: $draft.schoolKind) {
                 Text("Exam").tag(SchoolEventKind.exam)
                 Text("Assignment").tag(SchoolEventKind.assignment)
@@ -246,13 +210,17 @@ struct EventEditorView: View {
     }
 
     private var recurrenceSection: some View {
-        Section("Repeat") {
+        Section {
             Toggle("Repeat weekly", isOn: $draft.isRecurring)
                 .disabled(mode.isEditing)
 
             if draft.isRecurring {
+                // Locked with the toggle: the occurrences already exist, so a
+                // changed rule would only relabel them, not regenerate them.
                 WeekdaySelector(selection: $draft.recurringWeekdays, calendar: calendar, locale: locale)
+                    .disabled(mode.isEditing)
                 DatePicker("Until", selection: $draft.recurringEndDate, displayedComponents: .date)
+                    .disabled(mode.isEditing)
 
                 Text("Creates a separate entry for each occurrence, so you can edit or delete any one of them on its own.")
                     .font(.caption)
@@ -268,7 +236,7 @@ struct EventEditorView: View {
     }
 
     private var appearanceSection: some View {
-        Section("Colour") {
+        Section {
             Picker("Colour", selection: $draft.colorName) {
                 Text("Default").tag(String?.none)
                 ForEach(AppColor.allCases) { option in
@@ -289,8 +257,6 @@ struct EventEditorView: View {
                         draft.notes = String(newValue.prefix(Event.notesCharacterLimit))
                     }
                 }
-        } header: {
-            Text("Notes")
         } footer: {
             HStack {
                 Text("Optional. Special requirements, what to bring, anything else.")
@@ -367,36 +333,6 @@ struct EventEditorView: View {
         }
     }
 
-    private func applyQuickAdd() {
-        guard let parsed = QuickAddParser.parse(quickAddText, calendar: calendar) else {
-            quickAddFailed = true
-            return
-        }
-
-        quickAddFailed = false
-        draft.title = parsed.title
-        // Only adopt a type the user actually has switched on, so a stray
-        // "exam" cannot select School while School is disabled.
-        if settings.availableEventTypes.contains(parsed.type) {
-            draft.type = parsed.type
-        }
-        draft.startDate = parsed.startDate
-        draft.endDate = parsed.endDate
-
-        if draft.type == .work, let cents = parsed.hourlyRateCents {
-            draft.tracksPay = true
-            draft.compensationType = .hourly
-            draft.rateText = Money.editableString(cents: cents)
-        }
-
-        if let weekday = parsed.repeatsOnWeekday {
-            draft.isRecurring = true
-            draft.recurringWeekdays = [weekday]
-        }
-
-        quickAddText = ""
-    }
-
     private func commitNewSubject() {
         let name = newSubjectName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
@@ -447,7 +383,10 @@ struct EventEditorView: View {
                 EventSeries.propagate(from: event, context: modelContext, calendar: calendar)
             }
         case .create:
-            insertNewEvents()
+            let events = draft.makeEvents(subject: selectedSubject, preset: selectedPreset, calendar: calendar)
+            for event in events {
+                modelContext.insert(event)
+            }
         }
 
         // Stay open if the write failed, so the user's work survives and they
@@ -459,47 +398,5 @@ struct EventEditorView: View {
     private var selectedPreset: Preset? {
         guard let id = draft.presetID else { return nil }
         return presets.first { $0.id == id }
-    }
-
-    /// Creates the entry — or, for a weekly rule, one entry per occurrence
-    /// sharing a `recurrenceID`.
-    private func insertNewEvents() {
-        let subject = selectedSubject
-        let preset = selectedPreset
-
-        guard draft.isRecurring, !draft.recurringWeekdays.isEmpty else {
-            let event = Event()
-            draft.write(into: event, subject: subject, preset: preset)
-            modelContext.insert(event)
-            return
-        }
-
-        let occurrences = Recurrence.occurrences(
-            start: draft.startDate,
-            end: draft.endDate,
-            weekdays: Array(draft.recurringWeekdays),
-            until: draft.recurringEndDate,
-            calendar: calendar
-        )
-
-        // A rule that matches no dates would otherwise silently create nothing;
-        // fall back to the single entry the user actually filled in.
-        guard !occurrences.isEmpty else {
-            let event = Event()
-            draft.write(into: event, subject: subject, preset: preset)
-            event.isRecurring = false
-            modelContext.insert(event)
-            return
-        }
-
-        let groupID = UUID()
-        for occurrence in occurrences {
-            let event = Event()
-            draft.write(into: event, subject: subject, preset: preset)
-            event.startDate = occurrence.start
-            event.endDate = occurrence.end
-            event.recurrenceID = groupID
-            modelContext.insert(event)
-        }
     }
 }

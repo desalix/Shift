@@ -11,6 +11,7 @@ struct PresetsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppErrorReporter.self) private var errorReporter
     @Environment(AppSettings.self) private var settings
+    @Environment(\.locale) private var locale
     @Query(sort: \Preset.name) private var presets: [Preset]
 
     @State private var editing: Preset?
@@ -41,7 +42,7 @@ struct PresetsView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(preset.name).foregroundStyle(.primary)
-                                Text(preset.summary)
+                                Text(preset.summary(locale: locale))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -98,7 +99,8 @@ struct PresetEditorView: View {
     @Environment(AppSettings.self) private var settings
     @Query(sort: \Subject.name) private var subjects: [Subject]
 
-    private enum TimingMode: Hashable { case schedule, length }
+    /// `none` is a preset that leaves the entry's times alone.
+    private enum TimingMode: Hashable { case schedule, length, none }
 
     @State private var name = ""
     @State private var type: EventType = .work
@@ -202,13 +204,14 @@ struct PresetEditorView: View {
 
     // MARK: - Timing
 
-    /// Either fixed times of day or just a length, switched the same way as
-    /// Hourly and Fixed pay.
+    /// Fixed times of day, just a length, or neither — switched the same way
+    /// as Hourly and Fixed pay.
     private var timingSection: some View {
         Section {
             Picker("When", selection: $timingMode) {
                 Text("Schedule").tag(TimingMode.schedule)
                 Text("Length").tag(TimingMode.length)
+                Text("Any time").tag(TimingMode.none)
             }
             .pickerStyle(.segmented)
 
@@ -220,14 +223,23 @@ struct PresetEditorView: View {
                 DurationWheel(minutes: $durationMinutes)
                     .frame(maxWidth: .infinity)
                     .frame(height: 180)
+            case .none:
+                EmptyView()
             }
         } header: {
             Text("When")
         } footer: {
-            if timingMode == .schedule, endsNextDay {
-                Text("Ends next day")
-            } else if timingMode == .schedule {
-                Text(PresetTiming.durationText(minutes: timingMinutes))
+            switch timingMode {
+            case .schedule:
+                if endsNextDay {
+                    Text("Ends next day")
+                } else if let minutes = timingMinutes {
+                    Text(PresetTiming.durationText(minutes: minutes))
+                }
+            case .length:
+                EmptyView()
+            case .none:
+                Text("The entry keeps the time you choose.")
             }
         }
     }
@@ -237,11 +249,12 @@ struct PresetEditorView: View {
     private var endsNextDay: Bool { endMinute <= startMinute }
 
     /// The length the chosen timing gives a shift, for the footer and the
-    /// estimated earnings.
-    private var timingMinutes: Int {
+    /// estimated earnings. Nil when the preset sets no times.
+    private var timingMinutes: Int? {
         switch timingMode {
         case .schedule: endsNextDay ? endMinute + 1440 - startMinute : endMinute - startMinute
         case .length: durationMinutes
+        case .none: nil
         }
     }
 
@@ -292,7 +305,9 @@ struct PresetEditorView: View {
             timingMode = .length
             durationMinutes = minutes
         case nil:
-            break
+            // Saved without times. Opening it must not quietly pin the
+            // 09:00–17:00 default on the next save.
+            timingMode = .none
         }
 
         tracksPay = preset.compensationType != nil
@@ -327,6 +342,10 @@ struct PresetEditorView: View {
             target.defaultStartMinute = nil
             target.defaultEndMinute = nil
             target.defaultDurationMinutes = durationMinutes
+        case .none:
+            target.defaultStartMinute = nil
+            target.defaultEndMinute = nil
+            target.defaultDurationMinutes = nil
         }
 
         if type == .work, tracksPay {

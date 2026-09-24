@@ -8,9 +8,13 @@ import SwiftData
 import CoreTransferable
 import UniformTypeIdentifiers
 
-/// Pick one or more months and share them as a JSON file.
+/// Pick one or more months and share their work entries as a JSON file.
 struct ExportView: View {
-    @Query(sort: \Event.startDate, order: .reverse) private var events: [Event]
+    @Query(
+        filter: #Predicate<Event> { $0.typeRaw == "work" },
+        sort: \Event.startDate,
+        order: .reverse
+    ) private var events: [Event]
 
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
@@ -25,7 +29,7 @@ struct ExportView: View {
                 ContentUnavailableView {
                     Label("Nothing to export", systemImage: "square.and.arrow.up")
                 } description: {
-                    Text("Months with entries will appear here.")
+                    Text("Months with work entries will appear here.")
                 }
             } else {
                 Section {
@@ -37,7 +41,7 @@ struct ExportView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(month.start.formatted(.dateTime.month(.wide).year().locale(locale)).localizedCapitalized)
                                         .foregroundStyle(.primary)
-                                    Text("\(month.entryCount) entries")
+                                    Text("\(month.entryCount) shifts")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -54,7 +58,7 @@ struct ExportView: View {
                         .accessibilityAddTraits(selectedMonths.contains(month.start) ? .isSelected : [])
                     }
                 } footer: {
-                    Text("Choose one or more months. Entries are grouped by the month they start in.")
+                    Text("Choose one or more months. Only work entries are exported, grouped by the month they start in.")
                 }
             }
         }
@@ -92,26 +96,34 @@ struct ExportView: View {
         }
     }
 
-    /// Encoded on the main actor, where the model objects live; the share sheet
-    /// then only has to write bytes.
+    /// The document is gathered on the main actor, where the model objects
+    /// live; encoding waits until the share sheet asks for the file.
     private var exportFile: MonthExportFile {
         let months = Array(selectedMonths)
-        let document = MonthExporter.makeDocument(events: events, months: months, calendar: calendar)
-        let data = (try? MonthExporter.encode(document, timeZone: calendar.timeZone)) ?? Data()
-        return MonthExportFile(data: data, fileName: MonthExporter.fileName(for: months, calendar: calendar))
+        return MonthExportFile(
+            document: MonthExporter.makeDocument(events: events, months: months, calendar: calendar),
+            timeZone: calendar.timeZone,
+            fileName: MonthExporter.fileName(for: months, calendar: calendar)
+        )
     }
 }
 
 /// The JSON handed to the share sheet, written to a temporary file so the
 /// recipient sees a real file name rather than a generic "data".
+///
+/// Encoding happens here, not in the view body, so it runs once per share
+/// rather than on every redraw — and a failure fails the share instead of
+/// handing over an empty file.
 nonisolated struct MonthExportFile: Transferable {
-    let data: Data
+    let document: MonthExporter.Document
+    let timeZone: TimeZone
     let fileName: String
 
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(exportedContentType: .json) { file in
+            let data = try MonthExporter.encode(file.document, timeZone: file.timeZone)
             let url = URL.temporaryDirectory.appending(path: file.fileName)
-            try file.data.write(to: url, options: .atomic)
+            try data.write(to: url, options: .atomic)
             return SentTransferredFile(url)
         }
     }

@@ -6,8 +6,9 @@
 import SwiftUI
 import SwiftData
 
-/// The month calendar. Fixed layout: the grid always fills the available space
-/// exactly, and there is no zooming.
+/// The month calendar. Fixed layout: each month's grid fills the available
+/// space exactly, and there is no zooming. Months sit side by side, so a
+/// horizontal drag pulls the next or previous one in under the finger.
 struct HomeView: View {
     @Binding var displayedMonth: Date
 
@@ -15,27 +16,32 @@ struct HomeView: View {
     @Environment(AppRouter.self) private var router
 
     var body: some View {
-        // Re-creating the grid when the month changes is what re-runs the
-        // `@Query` underneath with new date bounds.
-        MonthGrid(month: displayedMonth)
-            .id(CalendarMath.startOfMonth(for: displayedMonth, calendar: calendar))
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    MonthStepper(displayedMonth: $displayedMonth)
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        router.requestNewEntry()
-                    } label: {
-                        Label("New entry", systemImage: "plus")
-                    }
+        // One grid per page, each with its own `@Query` over its month.
+        MonthPager(month: $displayedMonth) { month in
+            MonthGrid(month: month)
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                MonthStepper(displayedMonth: displayedMonth, step: step)
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    router.requestNewEntry()
+                } label: {
+                    Label("New entry", systemImage: "plus")
                 }
             }
-            // The toolbar +, the widget and the app-icon shortcut all raise the
-            // same flag, so they open one sheet rather than three.
-            .sheet(isPresented: Bindable(router).showsNewEntry) {
-                EventEditorView(mode: .create(initialDate: defaultNewEventDate, type: nil))
-            }
+        }
+        // The toolbar +, the widget and the app-icon shortcut all raise the
+        // same flag, so they open one sheet rather than three.
+        .sheet(isPresented: Bindable(router).showsNewEntry) {
+            EventEditorView(mode: .create(initialDate: defaultNewEventDate, type: nil))
+        }
+    }
+
+    /// The toolbar arrows: the pager scrolls to follow.
+    private func step(_ offset: Int) {
+        displayedMonth = CalendarMath.month(byAdding: offset, to: displayedMonth, calendar: calendar)
     }
 
     /// Today when viewing the current month — almost always what the user
@@ -145,7 +151,7 @@ private struct MonthGrid: View {
     /// midnight appears on both days.
     private var eventsByDay: [Date: [Event]] {
         var buckets: [Date: [Event]] = [:]
-        for event in events {
+        for event in events where settings.shows(event) {
             let firstDay = calendar.startOfDay(for: event.startDate)
             // An event ending exactly at midnight belongs to the previous day,
             // not to the day it technically touches for zero seconds.

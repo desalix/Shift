@@ -77,6 +77,7 @@ enum EventSeries {
             sibling.subject = edited.subject
             sibling.notes = edited.notes
             sibling.colorName = edited.colorName
+            sibling.preset = edited.preset
 
             if let newStart = calendar.date(
                 bySettingHour: time.hour ?? 0,

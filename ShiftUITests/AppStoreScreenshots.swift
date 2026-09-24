@@ -43,14 +43,9 @@ final class AppStoreScreenshots: XCTestCase {
         settle()
 
         app.buttons["New entry"].firstMatch.tap()
-        let quickAdd = app.textFields["work thursday 9-17 at 12.50/h"]
-        XCTAssertTrue(quickAdd.waitForExistence(timeout: 5), "Quick add field missing")
-        quickAdd.tap()
-        // Return submits: the form fills and the keyboard closes, so the
-        // filled time and pay are visible rather than hidden behind keys.
-        quickAdd.typeText("Café shift thursday 9-17 at 12.50/h\n")
+        XCTAssertTrue(app.navigationBars["New Entry"].waitForExistence(timeout: 5), "Entry editor missing")
         settle()
-        capture("03-QuickAdd", app: app)
+        capture("03-NewEntry", app: app)
         app.buttons["Cancel"].firstMatch.tap()
         settle()
 

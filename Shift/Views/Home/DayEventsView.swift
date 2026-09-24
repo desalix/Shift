@@ -7,27 +7,82 @@ import SwiftUI
 import SwiftData
 
 /// Everything on one day, reached by tapping a day box (or its "+N More" line).
+/// Days sit side by side, so a horizontal drag pulls the next or previous day
+/// in under the finger.
 ///
 /// Work comes first and is always on screen — even an empty day shows the block,
 /// offering to start a shift — because whether the day was worked is the
 /// question this app exists to answer.
 struct DayEventsView: View {
-    let day: Date
+    /// The day that was tapped. Pages are counted in days from it.
+    private let firstDay: Date
+    @State private var offset = 0
+    @State private var editorMode: EventEditorView.Mode?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.calendar) private var calendar
+
+    /// Ten years either way — far past anything anyone will swipe through.
+    private static let reach = 3653
+
+    init(day: Date) {
+        firstDay = day
+    }
+
+    var body: some View {
+        NavigationStack {
+            Pager(range: -Self.reach ..< Self.reach + 1, index: $offset) { pageOffset in
+                DayEventsList(day: day(at: pageOffset)) { type in
+                    editorMode = .create(initialDate: day(at: pageOffset), type: type)
+                }
+            }
+            .navigationTitle(day(at: offset).formatted(.dateTime.weekday(.wide).day().month(.wide)))
+            .navigationBarTitleDisplayMode(.inline)
+            // Out here rather than on each page, so there's one + for the
+            // day on screen.
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        editorMode = .create(initialDate: day(at: offset), type: nil)
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel(Text("New entry"))
+                }
+            }
+            .sheet(item: $editorMode) { mode in
+                EventEditorView(mode: mode)
+            }
+        }
+    }
+
+    private func day(at offset: Int) -> Date {
+        calendar.date(byAdding: .day, value: offset, to: firstDay) ?? firstDay
+    }
+}
+
+/// One day's entries. Horizontal drags turn the day, so deleting is in each
+/// row's long-press menu rather than a swipe action — and in the entry's
+/// detail screen, as before.
+private struct DayEventsList: View {
+    let day: Date
+    let add: (EventType?) -> Void
+
     @Environment(\.modelContext) private var modelContext
     @Environment(AppErrorReporter.self) private var errorReporter
-    @Environment(\.calendar) private var calendar
     @Environment(AppSettings.self) private var settings
 
     @Query private var events: [Event]
 
-    @State private var editorMode: EventEditorView.Mode?
     @State private var pendingDeletion: Event?
     @State private var pendingDeletionHasSiblings = false
 
-    init(day: Date) {
+    init(day: Date, add: @escaping (EventType?) -> Void) {
         self.day = day
+        self.add = add
         var calendar = Calendar.autoupdatingCurrent
         calendar.locale = .autoupdatingCurrent
         let bounds = CalendarMath.dayBounds(for: day, calendar: calendar)
@@ -42,91 +97,71 @@ struct DayEventsView: View {
     }
 
     var body: some View {
-        let summary = WorkDaySummary(events: events)
+        let summary = WorkDaySummary(events: events.filter(settings.shows))
 
-        NavigationStack {
-            List {
-                Section("Work") {
-                    if summary.workEvents.isEmpty {
-                        Button {
-                            editorMode = .create(initialDate: day, type: .work)
-                        } label: {
-                            Label("Add work day", systemImage: "plus.circle.fill")
-                        }
-                    } else {
-                        ForEach(summary.workEvents) { event in
-                            NavigationLink {
-                                EventDetailView(event: event)
-                            } label: {
-                                WorkSummaryRow(event: event)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                deleteButton(for: event)
-                            }
-                        }
-                    }
-                }
-
-                if !summary.otherEvents.isEmpty {
-                    Section("Other entries") {
-                        ForEach(summary.otherEvents) { event in
-                            NavigationLink {
-                                EventDetailView(event: event)
-                            } label: {
-                                EventRow(event: event)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                deleteButton(for: event)
-                            }
-                        }
-                    }
-                }
-            }
-            .listStyle(.insetGrouped)
-            .navigationTitle(day.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
+        List {
+            Section("Work") {
+                if summary.workEvents.isEmpty {
                     Button {
-                        editorMode = .create(initialDate: day, type: nil)
+                        add(.work)
                     } label: {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel(Text("New entry"))
-                }
-            }
-            .sheet(item: $editorMode) { mode in
-                EventEditorView(mode: mode)
-            }
-            .confirmationDialog(
-                Text("Delete this entry?"),
-                isPresented: Binding(
-                    get: { pendingDeletion != nil },
-                    set: { if !$0 { pendingDeletion = nil } }
-                ),
-                titleVisibility: .visible,
-                presenting: pendingDeletion
-            ) { event in
-                if pendingDeletionHasSiblings {
-                    Button(String(localized: "Delete This Entry Only"), role: .destructive) {
-                        delete(event, scope: .thisOccurrence)
-                    }
-                    Button(String(localized: "Delete All in Series"), role: .destructive) {
-                        delete(event, scope: .wholeSeries)
+                        Label("Add work day", systemImage: "plus.circle.fill")
                     }
                 } else {
-                    Button(String(localized: "Delete"), role: .destructive) {
-                        delete(event, scope: .thisOccurrence)
+                    ForEach(summary.workEvents) { event in
+                        NavigationLink {
+                            EventDetailView(event: event)
+                        } label: {
+                            WorkSummaryRow(event: event)
+                        }
+                        .contextMenu {
+                            deleteButton(for: event)
+                        }
                     }
                 }
-                Button(String(localized: "Cancel"), role: .cancel) { pendingDeletion = nil }
-            } message: { _ in
-                if pendingDeletionHasSiblings {
-                    Text("This entry repeats. You can delete just this occurrence or the whole series.")
+            }
+
+            if !summary.otherEvents.isEmpty {
+                Section("Other entries") {
+                    ForEach(summary.otherEvents) { event in
+                        NavigationLink {
+                            EventDetailView(event: event)
+                        } label: {
+                            EventRow(event: event)
+                        }
+                        .contextMenu {
+                            deleteButton(for: event)
+                        }
+                    }
                 }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .confirmationDialog(
+            Text("Delete this entry?"),
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingDeletion
+        ) { event in
+            if pendingDeletionHasSiblings {
+                Button(String(localized: "Delete This Entry Only"), role: .destructive) {
+                    delete(event, scope: .thisOccurrence)
+                }
+                Button(String(localized: "Delete All in Series"), role: .destructive) {
+                    delete(event, scope: .wholeSeries)
+                }
+            } else {
+                Button(String(localized: "Delete"), role: .destructive) {
+                    delete(event, scope: .thisOccurrence)
+                }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) { pendingDeletion = nil }
+        } message: { _ in
+            if pendingDeletionHasSiblings {
+                Text("This entry repeats. You can delete just this occurrence or the whole series.")
             }
         }
     }

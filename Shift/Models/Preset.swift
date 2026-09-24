@@ -104,8 +104,8 @@ extension Preset {
     }
 
     /// One-line description of what this preset fills in, shown under its name.
-    var summary: String {
-        [timing?.summary, detailSummary].compactMap { $0 }.joined(separator: " · ")
+    func summary(locale: Locale) -> String {
+        [timing?.summary(locale: locale), detailSummary].compactMap { $0 }.joined(separator: " · ")
     }
 
     private var detailSummary: String {
@@ -161,12 +161,15 @@ enum PresetTiming: Equatable, Sendable {
         }
     }
 
-    var summary: String {
+    /// "09:00–15:00" or "7h 45m". Times follow `locale`, which the app pins to
+    /// a 24-hour clock.
+    func summary(locale: Locale) -> String {
         switch self {
         case .schedule(let start, let end):
             let midnight = Calendar.current.startOfDay(for: Date())
-            let from = Self.time(start, on: midnight, calendar: .current).formatted(date: .omitted, time: .shortened)
-            let to = Self.time(end, on: midnight, calendar: .current).formatted(date: .omitted, time: .shortened)
+            let style = Date.FormatStyle.dateTime.hour().minute().locale(locale)
+            let from = Self.time(start, on: midnight, calendar: .current).formatted(style)
+            let to = Self.time(end, on: midnight, calendar: .current).formatted(style)
             return "\(from)–\(to)"
         case .length(let minutes):
             return Self.durationText(minutes: minutes)

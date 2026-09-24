@@ -45,25 +45,37 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// The device's locale with only the language swapped. A bare
-    /// `Locale(identifier: "en")` would drop the region too, and with it the
-    /// user's 24-hour clock, first weekday and number formats.
-    var locale: Locale? {
-        guard self != .system else { return nil }
-        var components = Locale.Components(locale: .current)
-        components.languageComponents = Locale.Language.Components(languageCode: Locale.LanguageCode(rawValue))
+    /// The locale the app formats and picks times with: the device's, with
+    /// only the language swapped when one is chosen, and always a 24-hour clock.
+    ///
+    /// Swapping just the language keeps the region's first weekday and number
+    /// formats, which a bare `Locale(identifier: "en")` would drop. The clock
+    /// is pinned rather than left to the region, so shifts read in 24-hour
+    /// time whatever the device says — a US region included.
+    func locale(basedOn base: Locale = .current) -> Locale {
+        var components = Locale.Components(locale: base)
+        if self != .system {
+            // The region lives inside the language components, so it has to be
+            // carried over — replacing them with just a language code turned
+            // es_ES into a bare "en", with US formats.
+            components.languageComponents = Locale.Language.Components(
+                languageCode: Locale.LanguageCode(rawValue),
+                script: nil,
+                region: base.region
+            )
+        }
+        components.hourCycle = .zeroToTwentyThree
         return Locale(components: components)
     }
 }
 
-/// App-wide preferences, stored in `UserDefaults`.
+/// App-wide preferences, stored per device in `UserDefaults`.
 ///
-/// These used to mirror into `NSUbiquitousKeyValueStore` so they followed the
-/// user between devices, but that needs the iCloud capability, which a free
-/// personal Apple developer team cannot sign. Settings are now per-device. To
-/// restore syncing on a paid account, mirror each `write` into the ubiquitous
-/// store and observe `didChangeExternallyNotification` — guarding the callback
-/// so adopted values are not echoed straight back.
+/// Entries sync through CloudKit; these settings don't. To make them follow
+/// the user between devices, mirror each `write` into `NSUbiquitousKeyValueStore`
+/// (the key-value store entitlement is already in place) and observe
+/// `didChangeExternallyNotification` — guarding the callback so adopted values
+/// are not echoed straight back.
 @Observable
 @MainActor
 final class AppSettings {
@@ -120,13 +132,10 @@ final class AppSettings {
     }
 
     /// Resolved colour for an event: its own override, else its type colour.
+    /// Subjects no longer carry a colour of their own.
     func color(for event: Event) -> Color {
         if let name = event.colorName, let override = AppColor(rawValue: name) {
             return override.color
-        }
-        if event.type == .school, let name = event.subject?.colorName,
-           let subjectColor = AppColor(rawValue: name) {
-            return subjectColor.color
         }
         return color(for: event.type).color
     }
@@ -135,6 +144,12 @@ final class AppSettings {
     /// once the user has switched it on.
     var availableEventTypes: [EventType] {
         schoolEnabled ? [.work, .school, .calendar] : [.work, .calendar]
+    }
+
+    /// Whether an entry appears on the calendar. Turning School off hides
+    /// school entries rather than deleting them, so they come back with it.
+    func shows(_ event: Event) -> Bool {
+        schoolEnabled || event.type != .school
     }
 
     // MARK: - Persistence

@@ -28,7 +28,7 @@ struct ShiftApp: App {
                 .environment(router)
                 .preferredColorScheme(settings.appearance.colorScheme)
                 .tint(settings.accentColor.color)
-                .environment(\.locale, settings.language.locale ?? Locale.autoupdatingCurrent)
+                .environment(\.locale, settings.language.locale())
         }
         .modelContainer(container)
     }

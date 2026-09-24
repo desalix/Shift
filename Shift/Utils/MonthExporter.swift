@@ -7,10 +7,17 @@ import Foundation
 
 /// Builds the JSON export for one or more months.
 ///
-/// Entries belong to the month they *start* in, the same rule the Income tab
-/// uses, so an export and the paycheck it came from always agree.
+/// Only work entries are exported: the file is a record of shifts and pay,
+/// not a copy of the calendar. Entries belong to the month they *start* in,
+/// the same rule the Income tab uses, so an export and the paycheck it came
+/// from always agree.
+///
+/// Version 2 is work-only; version 1 also carried school and calendar entries,
+/// with their `schoolKind` and `subject`.
 enum MonthExporter {
-    struct Document: Codable, Equatable {
+    // The export's value types are nonisolated so the share sheet can encode
+    // them off the main actor, only when a file is actually requested.
+    nonisolated struct Document: Codable, Equatable {
         var app: String
         var version: Int
         var exportedAt: Date
@@ -19,13 +26,13 @@ enum MonthExporter {
         var months: [Month]
     }
 
-    struct Month: Codable, Equatable {
+    nonisolated struct Month: Codable, Equatable {
         /// `yyyy-MM`.
         var month: String
         var entries: [Entry]
     }
 
-    struct Entry: Codable, Equatable {
+    nonisolated struct Entry: Codable, Equatable {
         var id: UUID
         var title: String
         var type: String
@@ -37,8 +44,6 @@ enum MonthExporter {
         var compensationType: String?
         var hourlyRateCents: Int?
         var fixedRateCents: Int?
-        var schoolKind: String?
-        var subject: String?
         var notes: String?
         var isRecurring: Bool
         var recurrenceId: UUID?
@@ -49,9 +54,9 @@ enum MonthExporter {
         var entryCount: Int
     }
 
-    /// Months that contain at least one entry, newest first.
+    /// Months that contain at least one work entry, newest first.
     static func availableMonths(for events: [Event], calendar: Calendar) -> [AvailableMonth] {
-        let counts = Dictionary(grouping: events) {
+        let counts = Dictionary(grouping: events.filter { $0.type == .work }) {
             CalendarMath.startOfMonth(for: $0.startDate, calendar: calendar)
         }
         .mapValues(\.count)
@@ -74,7 +79,7 @@ enum MonthExporter {
         let exportedMonths = starts.map { start in
             let end = CalendarMath.startOfNextMonth(for: start, calendar: calendar)
             let entries = events
-                .filter { $0.startDate >= start && $0.startDate < end }
+                .filter { $0.type == .work && $0.startDate >= start && $0.startDate < end }
                 .sorted { $0.startDate < $1.startDate }
                 // A closure, not `.map(entry(from:))`: an unapplied method
                 // reference drops the main-actor isolation the models need.
@@ -84,7 +89,7 @@ enum MonthExporter {
 
         return Document(
             app: "Shift",
-            version: 1,
+            version: 2,
             exportedAt: now,
             currency: Money.currencyCode,
             timeZone: calendar.timeZone.identifier,
@@ -94,7 +99,7 @@ enum MonthExporter {
 
     /// Pretty, key-sorted JSON with ISO-8601 dates carrying the export's UTC
     /// offset, so times read the way they appear in the app.
-    static func encode(_ document: Document, timeZone: TimeZone) throws -> Data {
+    nonisolated static func encode(_ document: Document, timeZone: TimeZone) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .custom { date, encoder in
@@ -133,7 +138,7 @@ enum MonthExporter {
     private static func entry(from event: Event) -> Entry {
         Entry(
             id: event.id,
-            // `displayTitle`, so an exam exports as "Calculus Exam" rather than "".
+            // `displayTitle`, so an untitled shift exports as "Untitled", not "".
             title: event.displayTitle,
             type: event.type.rawValue,
             start: event.startDate,
@@ -144,8 +149,6 @@ enum MonthExporter {
             compensationType: event.compensationType?.rawValue,
             hourlyRateCents: event.hourlyRateCents,
             fixedRateCents: event.fixedRateCents,
-            schoolKind: event.schoolKind?.rawValue,
-            subject: event.subject?.name,
             notes: event.notes,
             isRecurring: event.isRecurring,
             recurrenceId: event.recurrenceID

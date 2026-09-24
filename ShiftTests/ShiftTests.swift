@@ -364,6 +364,22 @@ struct CalendarMathTests {
         #expect(calendar.component(.month, from: next) == 9)
     }
 
+    /// Pages are addressed by index; a month must map to its index and back.
+    @Test func monthPageIndexesRoundTrip() {
+        for (year, month) in [(1900, 1), (2026, 9), (2026, 12), (2027, 1), (2099, 12)] {
+            let date = date(year, month, 15)
+            let index = CalendarMath.monthIndex(of: date, calendar: calendar)
+            #expect(CalendarMath.pageableMonths.contains(index))
+            let back = CalendarMath.month(atIndex: index, calendar: calendar)
+            #expect(calendar.component(.year, from: back) == year)
+            #expect(calendar.component(.month, from: back) == month)
+            #expect(calendar.component(.day, from: back) == 1)
+        }
+        // Neighbouring months are neighbouring pages, across a year end.
+        #expect(CalendarMath.monthIndex(of: date(2027, 1, 1), calendar: calendar)
+                == CalendarMath.monthIndex(of: date(2026, 12, 31), calendar: calendar) + 1)
+    }
+
     @Test func steppingWrapsTheYear() {
         let december = CalendarMath.month(byAdding: 1, to: date(2026, 11, 15), calendar: calendar)
         #expect(calendar.component(.month, from: december) == 12)
@@ -491,8 +507,12 @@ struct EventSeriesTests {
         let series = makeSeries(in: context)
         let edited = series[0]
 
+        let preset = Preset(name: "Tarde", type: .work)
+        context.insert(preset)
+
         edited.title = "Turno nuevo"
         edited.hourlyRateCents = 1600
+        edited.preset = preset
         edited.startDate = date(2026, 8, 6, 15, 0)
         edited.endDate = date(2026, 8, 6, 20, 0)
 
@@ -502,6 +522,7 @@ struct EventSeriesTests {
         for sibling in EventSeries.siblings(of: edited, context: context) {
             #expect(sibling.title == "Turno nuevo")
             #expect(sibling.hourlyRateCents == 1600)
+            #expect(sibling.preset?.id == preset.id)
             // New time of day, five-hour duration.
             #expect(calendar.component(.hour, from: sibling.startDate) == 15)
             #expect(calendar.component(.minute, from: sibling.startDate) == 0)
@@ -588,20 +609,35 @@ struct MonthExporterTests {
         #expect(document.months[1].entries.map(\.title) == ["Early", "Late"])
     }
 
-    @Test func carriesEarningsAndDisplayTitles() {
+    @Test func carriesEarnings() {
+        let shift = work("Shift", date(2026, 8, 11), hours: 3, rate: 1250)
+        let entries = MonthExporter.makeDocument(events: [shift], months: [date(2026, 8, 1)], calendar: calendar)
+            .months[0].entries
+
+        #expect(entries[0].earningsCents == 3750)
+        #expect(entries[0].durationMinutes == 180)
+    }
+
+    /// The export is a record of work: school and calendar entries stay out of
+    /// the file, and a month with only those isn't offered at all.
+    @Test func exportsOnlyWorkEntries() {
         let subject = Subject(name: "Calculus")
         let exam = Event(title: "", type: .school, startDate: date(2026, 8, 10),
                          endDate: date(2026, 8, 10, 11), schoolKind: .exam, subject: subject)
-        let shift = work("Shift", date(2026, 8, 11), hours: 3, rate: 1250)
+        let dentist = Event(title: "Dentist", type: .calendar, startDate: date(2026, 8, 12),
+                            endDate: date(2026, 8, 12, 10))
+        let onlyPersonal = Event(title: "Holiday", type: .calendar, startDate: date(2026, 9, 3),
+                                 endDate: date(2026, 9, 3, 10))
+        let shift = work("Shift", date(2026, 8, 11))
+        let events = [exam, dentist, onlyPersonal, shift]
 
-        let entries = MonthExporter.makeDocument(events: [exam, shift], months: [date(2026, 8, 1)], calendar: calendar)
-            .months[0].entries
+        let document = MonthExporter.makeDocument(events: events, months: [date(2026, 8, 1)], calendar: calendar)
+        #expect(document.months[0].entries.map(\.title) == ["Shift"])
+        #expect(document.months[0].entries.allSatisfy { $0.type == "work" })
 
-        #expect(entries[0].title == "Calculus Exam")
-        #expect(entries[0].subject == "Calculus")
-        #expect(entries[0].earningsCents == 0)
-        #expect(entries[1].earningsCents == 3750)
-        #expect(entries[1].durationMinutes == 180)
+        let months = MonthExporter.availableMonths(for: events, calendar: calendar)
+        #expect(months.map { MonthExporter.monthKey(for: $0.start, calendar: calendar) } == ["2026-08"])
+        #expect(months.map(\.entryCount) == [1])
     }
 
     @Test func roundTripsThroughJSON() throws {
@@ -723,86 +759,6 @@ struct MonthIncomeSummaryTests {
     }
 }
 
-// MARK: - Quick add parsing
-
-struct QuickAddParserTests {
-    private var calendar: Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Europe/Madrid")!
-        calendar.locale = Locale(identifier: "en_GB")
-        return calendar
-    }
-
-    /// A Wednesday, so "thursday" resolves to the next day and the maths is
-    /// checkable by hand.
-    private var now: Date {
-        DateComponents(
-            calendar: calendar, timeZone: TimeZone(identifier: "Europe/Madrid"),
-            year: 2026, month: 9, day: 16, hour: 10
-        ).date!
-    }
-
-    private func parse(_ text: String) -> QuickAddParser.Result? {
-        QuickAddParser.parse(text, calendar: calendar, timeZone: TimeZone(identifier: "Europe/Madrid")!, now: now)
-    }
-
-    @Test func readsAShiftWithAWeekdayAndRate() throws {
-        let result = try #require(parse("work thursday 9-17 at 12.50/h"))
-        #expect(result.type == .work)
-        #expect(result.hourlyRateCents == 1250)
-        #expect(calendar.component(.weekday, from: result.startDate) == 5)
-        #expect(calendar.component(.hour, from: result.startDate) == 9)
-        #expect(calendar.component(.hour, from: result.endDate) == 17)
-    }
-
-    @Test func readsSpanish() throws {
-        let result = try #require(parse("turno jueves de 9 a 17 a 12,50 €/hora"))
-        #expect(result.type == .work)
-        #expect(result.hourlyRateCents == 1250)
-        #expect(calendar.component(.weekday, from: result.startDate) == 5)
-    }
-
-    /// No rate and no work word is an ordinary calendar entry, not a shift.
-    @Test func withoutARateItIsACalendarEntry() throws {
-        let result = try #require(parse("dentist tomorrow 10:30-11:00"))
-        #expect(result.type == .calendar)
-        #expect(result.hourlyRateCents == nil)
-        #expect(calendar.component(.day, from: result.startDate) == 17)
-        #expect(calendar.component(.minute, from: result.startDate) == 30)
-    }
-
-    @Test func recognisesARepeatingRequest() throws {
-        let result = try #require(parse("every monday 9-17"))
-        #expect(result.repeatsOnWeekday == 2)
-    }
-
-    @Test func aOneOffDoesNotRepeat() throws {
-        #expect(try #require(parse("monday 9-17")).repeatsOnWeekday == nil)
-    }
-
-    /// An end before the start means the shift crosses midnight.
-    @Test func handlesAnOvernightShift() throws {
-        let result = try #require(parse("work 22-06"))
-        #expect(result.endDate > result.startDate)
-        #expect(result.endDate.timeIntervalSince(result.startDate) == 8 * 3600)
-    }
-
-    /// Without a time there is nothing to anchor an entry on, so the form is
-    /// left alone rather than being filled with an invented time.
-    @Test func returnsNothingWithoutATimeRange() {
-        #expect(parse("add a shift sometime next week") == nil)
-        #expect(parse("") == nil)
-    }
-
-    @Test func titleFallsBackWhenOnlySchedulingWordsRemain() throws {
-        #expect(try #require(parse("thursday 9-17")).title == "Event")
-    }
-
-    @Test func keepsTheNameItWasGiven() throws {
-        #expect(try #require(parse("dentist tomorrow 10-11")).title == "Dentist")
-    }
-}
-
 // MARK: - Preset timing and pay
 
 @MainActor
@@ -915,24 +871,166 @@ struct DraftValidationTests {
     }
 }
 
-// MARK: - App language
+// MARK: - App language and clock
 
 struct AppLanguageTests {
     /// Choosing a language in the app changes only the language: the device's
-    /// region, and so its 24-hour clock, is kept.
-    @Test func aChosenLanguageKeepsTheDeviceRegionAndClock() throws {
+    /// region is kept.
+    @Test func aChosenLanguageKeepsTheDeviceRegion() throws {
+        let spain = Locale(identifier: "es_ES")
         for language in [AppLanguage.english, .spanish] {
-            let locale = try #require(language.locale)
+            let locale = language.locale(basedOn: spain)
             #expect(locale.language.languageCode?.identifier == language.rawValue)
-            #expect(locale.region == Locale.current.region)
-            #expect(locale.hourCycle == Locale.current.hourCycle)
+            #expect(locale.region == spain.region)
         }
     }
 
-    @Test func englishInSpainUsesA24HourClock() {
-        var components = Locale.Components(locale: Locale(identifier: "es_ES"))
-        components.languageComponents = Locale.Language.Components(languageCode: "en")
-        let locale = Locale(components: components)
-        #expect(locale.hourCycle == .zeroToTwentyThree)
+    /// Times are always 24-hour, whatever the language, region or device
+    /// setting — including the US, whose own default is 12-hour.
+    @Test func theClockIsAlways24Hour() {
+        let bases = ["en_US", "en_ES", "es_ES", "es_US", "en_GB"].map(Locale.init(identifier:))
+        for base in bases {
+            for language in AppLanguage.allCases {
+                #expect(language.locale(basedOn: base).hourCycle == .zeroToTwentyThree)
+            }
+        }
+    }
+
+    @Test func formattedTimesHaveNoAMOrPM() {
+        let madrid = TimeZone(identifier: "Europe/Madrid")!
+        let afternoon = DateComponents(calendar: Calendar(identifier: .gregorian), timeZone: madrid,
+                                       year: 2026, month: 9, day: 24, hour: 14, minute: 30).date!
+        var style = Date.FormatStyle.dateTime.hour().minute()
+        style.timeZone = madrid
+        let text = afternoon.formatted(style.locale(AppLanguage.english.locale(basedOn: Locale(identifier: "en_US"))))
+        #expect(text.contains("14"))
+        #expect(!text.localizedCaseInsensitiveContains("pm"))
+    }
+
+    /// A preset's schedule is shown under its name; it follows the same clock.
+    @Test func presetSchedulesRead24Hour() {
+        let locale = AppLanguage.system.locale(basedOn: Locale(identifier: "en_US"))
+        let summary = PresetTiming.schedule(start: 22 * 60, end: 6 * 60).summary(locale: locale)
+        #expect(summary.contains("22"))
+        #expect(!summary.localizedCaseInsensitiveContains("am"))
+        #expect(!summary.localizedCaseInsensitiveContains("pm"))
+    }
+}
+
+// MARK: - Creating entries from a draft
+
+@MainActor
+struct DraftEventCreationTests {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Madrid")!
+        return calendar
+    }
+
+    /// Thursday 1 October 2026 — not today, so the draft starts at 09:00.
+    private func draft() -> EventEditorView.Draft {
+        let day = DateComponents(calendar: calendar, timeZone: calendar.timeZone,
+                                 year: 2026, month: 10, day: 1, hour: 12).date!
+        var draft = EventEditorView.Draft(initialDate: day, calendar: calendar, defaultType: .calendar)
+        draft.title = "Class"
+        return draft
+    }
+
+    private func expectOneOff(_ events: [Event]) {
+        #expect(events.count == 1)
+        #expect(events.allSatisfy { !$0.isRecurring })
+        #expect(events.allSatisfy { $0.recurringWeekdays == nil && $0.recurringEndDate == nil && $0.recurrenceID == nil })
+    }
+
+    @Test func aWeeklyRuleMakesOneEntryPerOccurrenceInOneGroup() throws {
+        var draft = draft()
+        draft.isRecurring = true
+        draft.recurringWeekdays = [5]
+        draft.recurringEndDate = DateComponents(calendar: calendar, timeZone: calendar.timeZone,
+                                                year: 2026, month: 10, day: 22, hour: 23).date!
+        let events = draft.makeEvents(subject: nil, preset: nil, calendar: calendar)
+        #expect(events.count == 4) // 1, 8, 15, 22 October
+        let groupID = try #require(events.first?.recurrenceID)
+        #expect(events.allSatisfy { $0.isRecurring && $0.recurrenceID == groupID })
+    }
+
+    /// Repeat switched on with every day unticked is a one-off, and must not
+    /// carry a "Rec" badge for a series that doesn't exist.
+    @Test func repeatWithNoWeekdaysMakesAPlainEntry() {
+        var draft = draft()
+        draft.isRecurring = true
+        draft.recurringWeekdays = []
+        expectOneOff(draft.makeEvents(subject: nil, preset: nil, calendar: calendar))
+    }
+
+    @Test func aRuleMatchingNoDatesMakesAPlainEntry() {
+        var draft = draft()
+        draft.isRecurring = true
+        draft.recurringEndDate = draft.startDate.addingTimeInterval(-86_400)
+        expectOneOff(draft.makeEvents(subject: nil, preset: nil, calendar: calendar))
+    }
+}
+
+// MARK: - School visibility
+
+@MainActor
+struct SchoolVisibilityTests {
+    /// Turning School off hides school entries but nothing else, and turning it
+    /// back on brings them back.
+    @Test func schoolEntriesFollowTheSchoolSwitch() throws {
+        let defaults = try #require(UserDefaults(suiteName: "ShiftTests.\(UUID().uuidString)"))
+        let settings = AppSettings(defaults: defaults)
+        let school = Event(title: "Exam", type: .school)
+        let work = Event(title: "Shift", type: .work)
+        let personal = Event(title: "Dentist", type: .calendar)
+
+        settings.schoolEnabled = false
+        #expect(!settings.shows(school))
+        #expect(settings.shows(work))
+        #expect(settings.shows(personal))
+
+        settings.schoolEnabled = true
+        #expect(settings.shows(school))
+    }
+
+    /// Subjects no longer have a colour: a colour saved on one before must not
+    /// tint its entries, since there's nowhere left to change it.
+    @Test func schoolEntriesIgnoreAnOldSubjectColour() throws {
+        let defaults = try #require(UserDefaults(suiteName: "ShiftTests.\(UUID().uuidString)"))
+        let settings = AppSettings(defaults: defaults)
+        settings.schoolColor = .green
+        let subject = Subject(name: "Calculus", colorName: AppColor.red.rawValue)
+        let exam = Event(type: .school, schoolKind: .exam, subject: subject)
+
+        #expect(settings.color(for: exam) == AppColor.green.color)
+
+        exam.colorName = AppColor.orange.rawValue
+        #expect(settings.color(for: exam) == AppColor.orange.color)
+    }
+}
+
+// MARK: - Plurals
+
+@MainActor
+struct PluralTests {
+    /// Reads a specific language's strings, independent of the simulator's.
+    private func strings(_ language: String) throws -> Bundle {
+        let path = try #require(Bundle.main.path(forResource: language, ofType: "lproj"))
+        return try #require(Bundle(path: path))
+    }
+
+    @Test func countsAgreeWithTheirNumber() throws {
+        let en = try strings("en")
+        let es = try strings("es")
+
+        #expect(String(localized: "\(1) shifts", bundle: en) == "1 shift")
+        #expect(String(localized: "\(3) shifts", bundle: en) == "3 shifts")
+        #expect(String(localized: "\(1) shifts", bundle: es) == "1 turno")
+        #expect(String(localized: "\(3) shifts", bundle: es) == "3 turnos")
+
+        let day = "Monday"
+        #expect(String(localized: "\(day), \(1) entries", bundle: en) == "Monday, 1 entry")
+        #expect(String(localized: "\(day), \(2) entries", bundle: en) == "Monday, 2 entries")
+        #expect(String(localized: "\(day), \(1) entries", bundle: es) == "Monday, 1 entrada")
     }
 }

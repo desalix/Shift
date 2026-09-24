@@ -14,6 +14,9 @@ import SwiftData
 final class Subject {
     var id: UUID = UUID()
     var name: String = ""
+    /// No longer read or set: subjects lost their colour in 1.1, and school
+    /// entries use the School colour instead. Kept because removing a stored
+    /// property would change the CloudKit schema.
     var colorName: String?
     var createdAt: Date = Date()
 

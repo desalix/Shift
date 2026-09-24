@@ -6,52 +6,28 @@
 import SwiftUI
 import SwiftData
 
+/// The Settings tab: General and School lead to their own pages; Presets and
+/// Data sit here directly. No section headers — each row names itself.
 struct SettingsView: View {
-    @Environment(AppSettings.self) private var settings
-    @Environment(\.modelContext) private var modelContext
-
     @Query private var allEvents: [Event]
-    @Query(sort: \Subject.name) private var subjects: [Subject]
     @Query(sort: \Preset.name) private var presets: [Preset]
 
-    @State private var showingSchoolDisableWarning = false
-
     var body: some View {
-        @Bindable var settings = settings
-
         List {
             Section {
-                Toggle(isOn: Binding(
-                    get: { settings.schoolEnabled },
-                    set: { newValue in
-                        // Turning School off hides the section but must never
-                        // silently discard the user's school data, so warn
-                        // only when there is something to lose.
-                        if !newValue, hasSchoolData {
-                            showingSchoolDisableWarning = true
-                        } else {
-                            settings.schoolEnabled = newValue
-                        }
-                    }
-                )) {
+                NavigationLink {
+                    GeneralSettingsView()
+                } label: {
+                    Label("General", systemImage: "gearshape")
+                }
+            }
+
+            Section {
+                NavigationLink {
+                    SchoolSettingsView()
+                } label: {
                     Label("School", systemImage: EventType.school.symbolName)
                 }
-
-                if settings.schoolEnabled {
-                    NavigationLink {
-                        SubjectsView()
-                    } label: {
-                        LabeledContent {
-                            Text("\(subjects.count)")
-                        } label: {
-                            Label("Subjects", systemImage: "books.vertical")
-                        }
-                    }
-                }
-            } header: {
-                Text("Sections")
-            } footer: {
-                Text("Work and personal calendar entries are always available.")
             }
 
             Section {
@@ -64,13 +40,48 @@ struct SettingsView: View {
                         Label("Manage Presets", systemImage: "square.stack.3d.up")
                     }
                 }
-            } header: {
-                Text("Presets")
             } footer: {
                 Text("Presets pre-fill the entry form. Handy for a shift you work often.")
             }
 
-            Section("Appearance") {
+            Section {
+                LabeledContent {
+                    Text("\(allEvents.count)")
+                } label: {
+                    Label("Entries", systemImage: "calendar")
+                }
+
+                NavigationLink {
+                    ExportView()
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+            }
+        }
+    }
+}
+
+/// Language and appearance.
+struct GeneralSettingsView: View {
+    @Environment(AppSettings.self) private var settings
+
+    var body: some View {
+        @Bindable var settings = settings
+
+        List {
+            Section {
+                Picker(selection: $settings.language) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(language.displayName).tag(language)
+                    }
+                } label: {
+                    Label("Language", systemImage: "globe")
+                }
+            } footer: {
+                Text("Most text changes immediately. A few system-provided strings update the next time you open Shift.")
+            }
+
+            Section {
                 Picker(selection: $settings.appearance) {
                     ForEach(AppearanceMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
@@ -102,47 +113,9 @@ struct SettingsView: View {
                     selection: $settings.calendarColor
                 )
             }
-
-            Section {
-                Picker(selection: $settings.language) {
-                    ForEach(AppLanguage.allCases) { language in
-                        Text(language.displayName).tag(language)
-                    }
-                } label: {
-                    Label("Language", systemImage: "globe")
-                }
-            } header: {
-                Text("Language")
-            } footer: {
-                Text("Most text changes immediately. A few system-provided strings update the next time you open Shift.")
-            }
-
-            Section("Data") {
-                LabeledContent {
-                    Text("\(allEvents.count)")
-                } label: {
-                    Label("Entries", systemImage: "calendar")
-                }
-
-                NavigationLink {
-                    ExportView()
-                } label: {
-                    Label("Export", systemImage: "square.and.arrow.up")
-                }
-            }
         }
-        .alert(Text("Turn off School?"), isPresented: $showingSchoolDisableWarning) {
-            Button(String(localized: "Turn Off"), role: .destructive) {
-                settings.schoolEnabled = false
-            }
-            Button(String(localized: "Cancel"), role: .cancel) {}
-        } message: {
-            Text("Your subjects and school entries are kept, but hidden until you turn School back on.")
-        }
-    }
-
-    private var hasSchoolData: Bool {
-        !subjects.isEmpty || allEvents.contains { $0.type == .school }
+        .navigationTitle(Text("General"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

@@ -186,8 +186,7 @@ extension Event {
     }
 
     /// Validates a candidate entry. Kept as a static function over loose values
-    /// so the editor can validate a draft before an `Event` is ever inserted,
-    /// and so the AI tool layer can validate a proposed mutation the same way.
+    /// so the editor can validate a draft before an `Event` is ever inserted.
     static func validate(
         title: String,
         type: EventType,

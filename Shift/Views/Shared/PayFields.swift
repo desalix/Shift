@@ -13,6 +13,9 @@ struct PayFields: View {
     @Binding var rateText: String
     /// When known, an hourly rate also shows what it comes to for this length.
     var durationMinutes: Int?
+    /// The entry editor drops section headers, since its fields label
+    /// themselves; the preset editor keeps them.
+    var showsHeader = true
 
     @Environment(\.locale) private var locale
 
@@ -53,7 +56,7 @@ struct PayFields: View {
                 }
             }
         } header: {
-            Text("Pay")
+            if showsHeader { Text("Pay") }
         } footer: {
             if !tracksPay {
                 Text("This shift records time only. It still appears in Income, without an amount.")

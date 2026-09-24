@@ -199,6 +199,51 @@ extension EventEditorView {
 
             event.touch()
         }
+
+        /// The entries a new draft creates: one, or — for a weekly rule — one
+        /// per occurrence sharing a `recurrenceID`. Returned uninserted.
+        func makeEvents(subject: Subject?, preset: Preset?, calendar: Calendar) -> [Event] {
+            guard isRecurring, !recurringWeekdays.isEmpty else {
+                return [makeOneOff(subject: subject, preset: preset)]
+            }
+
+            let occurrences = Recurrence.occurrences(
+                start: startDate,
+                end: endDate,
+                weekdays: Array(recurringWeekdays),
+                until: recurringEndDate,
+                calendar: calendar
+            )
+
+            // A rule that matches no dates would otherwise silently create
+            // nothing; fall back to the single entry the user actually filled in.
+            guard !occurrences.isEmpty else {
+                return [makeOneOff(subject: subject, preset: preset)]
+            }
+
+            let groupID = UUID()
+            return occurrences.map { occurrence in
+                let event = Event()
+                write(into: event, subject: subject, preset: preset)
+                event.startDate = occurrence.start
+                event.endDate = occurrence.end
+                event.recurrenceID = groupID
+                return event
+            }
+        }
+
+        /// A single entry with no trace of the repeat rule. Leaving
+        /// `isRecurring` set would show the "Rec" badge on an entry that
+        /// belongs to no series.
+        private func makeOneOff(subject: Subject?, preset: Preset?) -> Event {
+            let event = Event()
+            write(into: event, subject: subject, preset: preset)
+            event.isRecurring = false
+            event.recurringWeekdays = nil
+            event.recurringEndDate = nil
+            event.recurrenceID = nil
+            return event
+        }
     }
 }
 

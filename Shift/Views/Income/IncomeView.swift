@@ -17,13 +17,20 @@ struct IncomeView: View {
     @Environment(\.calendar) private var calendar
 
     var body: some View {
-        MonthIncome(month: displayedMonth)
-            .id(CalendarMath.startOfMonth(for: displayedMonth, calendar: calendar))
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    MonthStepper(displayedMonth: $displayedMonth)
-                }
+        // Months side by side, like Home: drag to pull the next one in.
+        MonthPager(month: $displayedMonth) { month in
+            MonthIncome(month: month)
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                MonthStepper(displayedMonth: displayedMonth, step: step)
             }
+        }
+    }
+
+    /// The toolbar arrows: the pager scrolls to follow.
+    private func step(_ offset: Int) {
+        displayedMonth = CalendarMath.month(byAdding: offset, to: displayedMonth, calendar: calendar)
     }
 }
 
